@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Distribution Fitting Tool — UPCE</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Barlow:wght@400;500;600;700&display=swap');
+:root{
+  --bg:#161b26;--panel:#1e2535;--panel2:#252d40;
+  --border:#2e3a52;--accent:#4285f4;--green:#34c77b;
+  --warn:#f55f4e;--txt:#e8edf5;--txt2:#8a97b0;--txt3:#5a6680;
+  --mono:'JetBrains Mono',monospace;--sans:'Barlow',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:13px}
+
+/* ── top bar ── */
+#topbar{
+  background:var(--panel);border-bottom:1px solid var(--border);
+  padding:10px 20px;display:flex;align-items:center;gap:14px;
+  position:sticky;top:0;z-index:200;flex-shrink:0;
+}
+#topbar h1{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--accent)}
+#topbar .ver{font-size:11px;color:var(--txt3);font-family:var(--mono)}
+#topbar .author{margin-left:auto;font-size:11px;color:var(--txt2);font-family:var(--mono)}
+
+/* ── layout ── */
+#layout{display:flex;height:calc(100vh - 42px);overflow:hidden}
+
+/* ── sidebar ── */
+#sidebar{
+  width:310px;min-width:310px;flex-shrink:0;height:100%;
+  overflow-y:auto;background:var(--panel);
+  border-right:1px solid var(--border);display:flex;flex-direction:column;
+}
+.sec{border-bottom:1px solid var(--border);padding:11px 13px;flex-shrink:0}
+.sec-title{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:9px}
+
+/* ── results ── */
+#results{flex:1;min-width:0;height:100%;overflow-y:auto;padding:14px;
+  display:flex;flex-direction:column;gap:14px}
+
+/* ── form elements ── */
+label{font-size:11px;color:var(--txt2);display:block;margin-bottom:3px}
+input[type=number],input[type=text],select{
+  background:var(--bg);border:1px solid var(--border);color:var(--txt);
+  font-family:var(--mono);font-size:11px;padding:4px 7px;border-radius:4px;
+  width:100%;outline:none;transition:border-color .15s}
+input:focus,select:focus{border-color:var(--accent)}
+select option{background:var(--panel2)}
+
+/* ── file upload ── */
+.upload-zone{
+  display:block;border:1.5px dashed var(--border);border-radius:5px;
+  padding:8px 10px;text-align:center;cursor:pointer;
+  transition:border-color .2s,background .2s;background:rgba(255,255,255,.02);
+  position:relative;
+}
+.upload-zone:hover{border-color:var(--accent);background:rgba(66,133,244,.06)}
+.upload-zone .uz-icon{font-size:24px;color:var(--txt3);margin-bottom:5px}
+.upload-zone .uz-text{font-size:11px;color:var(--txt2);line-height:1.5}
+.upload-zone .uz-name{font-size:11px;color:var(--green);margin-top:5px;font-family:var(--mono);word-break:break-all}
+
+/* ── buttons ── */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:4px;
+  border:none;font-family:var(--sans);font-size:12px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn-blue{background:var(--accent);color:#fff}
+.btn-gray{background:var(--panel2);color:var(--txt2);border:1px solid var(--border)}
+.btn-green{background:var(--green);color:#0d1f16}
+.btn-sm{padding:4px 10px;font-size:11px}
+.btn-row{display:flex;gap:7px;flex-wrap:wrap}
+
+/* ── nrow ── */
+.nrow{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.nrow label{margin:0;white-space:nowrap;font-size:12px;color:var(--txt)}
+.nrow input{width:80px;flex-shrink:0}
+
+/* ── row2 ── */
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+
+/* ── inv row ── */
+.inv-row{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:end}
+.inv-result{background:var(--panel2);border:1px solid var(--border);border-radius:4px;
+  padding:5px 9px;font-family:var(--mono);font-size:11px;color:var(--green);margin-top:5px;min-height:26px}
+
+/* ── status ── */
+#statusbar{border-top:1px solid var(--border);padding:7px 13px;font-family:var(--mono);
+  font-size:11px;color:var(--txt2);display:flex;align-items:center;gap:8px;flex-shrink:0;margin-top:auto}
+#statusbar .dot{width:7px;height:7px;border-radius:50%;background:var(--txt3);flex-shrink:0}
+#statusbar.ok  .dot{background:var(--green)}
+#statusbar.err .dot{background:var(--warn)}
+#statusbar.running .dot{background:var(--accent);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── tabs ── */
+.tabbar{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:12px}
+.tab{padding:7px 13px;font-size:11px;font-family:var(--mono);font-weight:600;
+  color:var(--txt3);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab:hover:not(.active){color:var(--txt2)}
+.tabpanel{display:none}.tabpanel.active{display:block}
+
+/* ── cards ── */
+.card{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:13px;margin-bottom:12px}
+.card h3{font-family:var(--mono);font-size:10px;color:var(--txt2);margin-bottom:10px;
+  letter-spacing:.06em;text-transform:uppercase}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* ── GoF compact strip ── */
+.gof-strip{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;
+  background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:6px 10px}
+.gof-strip .gs-label{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--txt3);margin-right:4px;white-space:nowrap}
+.gc{display:inline-flex;align-items:center;gap:5px;border-radius:4px;padding:3px 9px;
+  border:1px solid var(--border);background:var(--panel2);white-space:nowrap}
+.gc.pass{background:#1a3028;border-color:#2a5040}
+.gc.fail{background:#2d1a1a;border-color:#5a2a2a}
+.gc.pend{background:var(--panel2)}
+.gc-name{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--txt3);font-family:var(--mono)}
+.gc-res{font-size:11px;font-weight:700;font-family:var(--mono)}
+.gc.pass .gc-res{color:var(--green)}
+.gc.fail .gc-res{color:var(--warn)}
+.gc.pend .gc-res{color:var(--txt3)}
+.gc-p{font-size:10px;color:var(--txt3);font-family:var(--mono)}
+
+/* ── chart ── */
+.chart-wrap{position:relative;width:100%;height:260px}
+.chart-wrap-tall{position:relative;width:100%;height:270px}
+
+/* ── placeholder ── */
+.ph-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:220px;color:var(--txt3);gap:10px;font-size:12px;font-family:var(--mono)}
+
+/* ── outlier box ── */
+.out-box{font-family:var(--mono);font-size:11px;color:#f5a623;background:#2a2010;
+  border:1px solid #5a4010;border-radius:4px;padding:7px 10px;min-height:26px;word-break:break-all}
+
+/* ── log ── */
+.log-box{font-family:var(--mono);font-size:11px;background:#0d1520;color:var(--green);
+  border-radius:5px;padding:10px 13px;white-space:pre-wrap;line-height:1.7;
+  max-height:220px;overflow-y:auto;border:1px solid var(--border)}
+
+/* ── hint ── */
+.hint{font-size:10px;color:var(--txt3);font-family:var(--mono);margin-top:4px;line-height:1.5}
+
+/* ── toolbar ── */
+.toolbar{display:flex;gap:7px;margin-bottom:11px;flex-wrap:wrap}
+
+/* ── footer ── */
+#footer{display:none}
+
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+
+<!-- ═══ TOP BAR ═══ -->
+<div id="topbar">
+  <h1>Distribution Fitting Tool</h1>
+  <span class="ver">v3.1 &nbsp;·&nbsp; TA CR – SIGMA</span>
+  <span style="font-size:10px;color:var(--txt3);font-family:var(--mono);margin-left:6px">CC BY-NC-SA 4.0</span>
+  <span class="author">doc. Ing. Özgür Yurdakul, Ph.D. &nbsp;|&nbsp; Faculty of Transport Engineering, University of Pardubice</span>
+</div>
+
+<div id="layout">
+
+<!-- ═══════════ SIDEBAR ═══════════ -->
+<div id="sidebar">
+
+  <!-- File upload -->
+  <div class="sec">
+    <div class="sec-title">Data File</div>
+    <label class="upload-zone" id="uploadZone" for="fileIn">
+      <input type="file" id="fileIn" accept=".txt,.csv"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+        onchange="loadFile(this.files[0])">
+      <div class="uz-icon" style="font-size:16px;margin-bottom:3px">⬆</div>
+      <div class="uz-text" style="font-size:10px">Click or drag &amp; drop &nbsp;<strong>.txt</strong> / <strong>.csv</strong><br><small>One value per line · comma/space/tab separated</small></div>
+      <div class="uz-name" id="fname"></div>
+    </label>
+  </div>
+
+  <!-- Samples + settings -->
+  <div class="sec">
+    <div class="sec-title">Settings</div>
+    <div class="nrow">
+      <label>n =</label>
+      <input type="number" id="nPts" value="0" min="0" readonly
+        style="width:70px;background:var(--panel2);color:var(--txt2)">
+      <label style="margin:0;font-size:11px;color:var(--txt3)">&nbsp;values loaded</label>
+    </div>
+    <div style="margin-bottom:7px">
+      <label>Distribution type</label>
+      <select id="distType" onchange="onDistChange()">
+        <option value="lognormal">LogNormal</option>
+        <option value="normal">Normal</option>
+        <option value="weibull">Weibull</option>
+        <option value="gamma">Gamma</option>
+        <option value="rayleigh">Rayleigh</option>
+        <option value="exponential">Exponential</option>
+        <option value="uniform">Uniform</option>
+        <option value="gumbel">Gumbel (Type I Max)</option>
+        <option value="frechet">Fréchet (Type II Max)</option>
+        <option value="loglogistic">Log-logistic</option>
+      </select>
+      <div class="hint" id="distHint">LogNormal: μ_ln (log-space mean), σ_ln (log-space std)</div>
+    </div>
+    <div style="margin-bottom:7px">
+      <label>Outlier detection method</label>
+      <select id="outlierMethod">
+        <option value="none">None (keep all)</option>
+        <option value="mean3s">Mean ± 3σ  (isoutlier 'mean')</option>
+        <option value="median">Median / MAD  (isoutlier 'median')</option>
+        <option value="iqr">IQR  (1.5 × IQR rule)</option>
+        <option value="grubbs">Grubbs test  (α = 0.05)</option>
+        <option value="gesd">GESD / Rosner  (α = 0.05)</option>
+      </select>
+    </div>
+    <div class="row2">
+      <div><label>X min (plot)</label><input type="number" id="xlimMin" value="0" step="any"></div>
+      <div><label>X max (plot)</label><input type="number" id="xlimMax" value="100" step="any"></div>
+    </div>
+    <div class="row2" style="margin-top:7px">
+      <div><label>Y max — PDF</label><input type="number" id="ylimMax" value="" step="any" placeholder="auto"></div>
+      <div><label>X-axis label</label><input type="text" id="xlabel" value="x"></div>
+    </div>
+  </div>
+
+  <!-- Inverse probability -->
+  <div class="sec">
+    <div class="sec-title">Inverse Probability</div>
+    <label>Failure probability p</label>
+    <div class="inv-row">
+      <input type="number" id="invProb" value="0.05" step="0.001" min="0.0001" max="0.9999">
+      <button class="btn btn-blue btn-sm" onclick="calcInverse()">Calc</button>
+    </div>
+    <div class="inv-result" id="invResult">Run analysis first</div>
+  </div>
+
+  <!-- Run -->
+  <div class="sec">
+    <button class="btn btn-green" id="btnRun" style="width:100%;justify-content:center;font-size:13px;padding:9px" onclick="runAnalysis()" disabled>
+      ▶  Run Analysis
+    </button>
+  </div>
+
+  <!-- Acknowledgement -->
+  <div class="sec">
+    <div class="sec-title">Acknowledgement</div>
+    <div style="background:#1a2a4a;border:1px solid #3a5080;border-radius:5px;padding:7px 10px;margin-bottom:8px;font-size:11px;color:#a8c0e8;display:flex;align-items:center;gap:9px;">
+      <span style="font-size:18px;flex-shrink:0">🇨🇿</span>
+      <span><strong style="color:#d0e4ff">TA CR – SIGMA / M.ERA-NET Cofund</strong><br>Technology Agency of the Czech Republic</span>
+    </div>
+    <div style="font-size:11px;color:var(--txt2);line-height:1.65;margin-bottom:8px;">
+      This tool was developed within the framework of a project co-financed from the state budget by the
+      <strong style="color:var(--txt)">Technology Agency of the Czech Republic</strong> under the
+      <strong style="color:var(--txt)">SIGMA Programme</strong> within the
+      <strong style="color:var(--txt)">M.ERA-NET Cofund</strong>.
+    </div>
+    <div class="sec-title" style="margin-top:4px">Citation</div>
+    <div style="font-size:11px;color:var(--txt2);line-height:1.65;font-style:italic;">
+      Yurdakul, Özgür (2026). <em>Distribution Fitting Tool: A web-based statistical distribution fitting application.</em>
+      Faculty of Transport Engineering, University of Pardubice.
+      <a href="https://ozguryurdakul.github.io/StatisticalTools/distribution_fitting_GUI.html"
+         style="color:var(--accent);word-break:break-all;font-style:normal;font-weight:600;display:block;margin-top:3px"
+         target="_blank">ozguryurdakul.github.io/StatisticalTools</a>
+    </div>
+    <div style="margin-top:5px">
+      <a href="https://github.com/ozguryurdakul/StatisticalTools"
+         target="_blank"
+         style="display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--txt3);text-decoration:none;font-family:var(--mono);background:var(--panel2);border:1px solid var(--border);border-radius:4px;padding:3px 8px;">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="flex-shrink:0">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        github.com/ozguryurdakul/StatisticalTools
+      </a>
+    </div>
+    <div style="font-size:10px;color:var(--txt3);margin-top:4px;">CC BY-NC-SA 4.0</div>
+  </div>
+
+  <div id="statusbar"><div class="dot"></div><span id="stxt">Upload a data file to begin.</span></div>
+</div><!-- end sidebar -->
+
+<!-- ═══════════ RESULTS ═══════════ -->
+<div id="results">
+
+  <!-- toolbar -->
+  <div class="toolbar">
+    <button class="btn btn-gray btn-sm" id="btnPNG" onclick="savePNG()">💾 Save Current Chart</button>
+    <button class="btn btn-gray btn-sm" id="btnSaveAll" onclick="saveAllPNG()">🖼 Save All Charts</button>
+    <button class="btn btn-gray btn-sm" id="btnCSV" onclick="saveCSV()">📄 Export Data CSV</button>
+  </div>
+
+  <!-- GoF compact strip -->
+  <div class="gof-strip">
+    <span class="gs-label">GoF Tests (α=0.05):</span>
+    <div class="gc pend" id="gc-ks"><span class="gc-name">K–S</span><span class="gc-res">—</span><span class="gc-p">p=—</span></div>
+    <div class="gc pend" id="gc-chi"><span class="gc-name">χ²</span><span class="gc-res">—</span><span class="gc-p">p=—</span></div>
+    <div class="gc pend" id="gc-lil"><span class="gc-name">Lilliefors</span><span class="gc-res">—</span><span class="gc-p">stat=—</span></div>
+    <div class="gc pend" id="gc-ad"><span class="gc-name">A–D</span><span class="gc-res">—</span><span class="gc-p">A²=—</span></div>
+  </div>
+
+  <!-- tabs -->
+  <div>
+    <div class="tabbar">
+      <div class="tab active" data-tab="0">PDF</div>
+      <div class="tab" data-tab="1">CDF</div>
+      <div class="tab" data-tab="2">Combined</div>
+    </div>
+
+    <!-- Tab 0: PDF -->
+    <div class="tabpanel active" id="tp0">
+      <div class="card" style="margin-bottom:0;background:#fff">
+        <h3 style="color:#444">PDF — Probability Density &nbsp;<span id="distBadge" style="color:#2176ae">LogNormal</span></h3>
+        <div class="chart-wrap-tall">
+          <div class="ph-empty" id="pdfPH"><div style="font-size:40px;opacity:.3">▭</div><div>Upload data and run analysis</div></div>
+          <canvas id="pdfChart" role="img" aria-label="PDF chart" style="display:none"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 1: CDF -->
+    <div class="tabpanel" id="tp1">
+      <div class="card" style="margin-bottom:0;background:#fff">
+        <h3 style="color:#444">CDF — Cumulative Distribution</h3>
+        <div class="chart-wrap-tall">
+          <div class="ph-empty" id="cdfPH"><div style="font-size:40px;opacity:.3">∫</div><div>Upload data and run analysis</div></div>
+          <canvas id="cdfChart" role="img" aria-label="CDF chart" style="display:none"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Combined -->
+    <div class="tabpanel" id="tp2">
+      <div class="card" style="margin-bottom:0;background:#fff">
+        <h3 style="color:#444">Combined View — PDF + CDF</h3>
+        <div style="position:relative;width:100%;height:320px">
+          <div class="ph-empty" id="combPH"><div style="font-size:40px;opacity:.3">⬡</div><div>Upload data and run analysis</div></div>
+          <canvas id="combChart" role="img" aria-label="Combined chart" style="display:none"></canvas>
+        </div>
+        <div id="combInfo" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary log + outliers — always visible below charts -->
+  <div class="grid2">
+    <div class="card" style="margin-bottom:0">
+      <h3>Detected Outliers</h3>
+      <div class="out-box" id="outBox">—</div>
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <h3>Summary Log</h3>
+      <div class="log-box" id="logBox">Upload a .txt or .csv file to begin.
+
+Supported formats:
+  • One value per line
+  • Space / tab / comma separated</div>
+    </div>
+  </div>
+
+</div><!-- end results -->
+</div><!-- end layout -->
+
+
+
+<script>
+'use strict';
+
+/* ═══════════════════════════════ STATE ════════════════════════════════ */
+let rawData  = null;
+let fitResult= null;
+let charts   = {};   // pdfChart, cdfChart, combChart
+
+/* ═══════════════════════════════ DISTRIBUTION INFO ═══════════════════ */
+const DIST_HINTS = {
+  lognormal:   'μ_ln (log-space mean), σ_ln (log-space std) — fit by MLE on log(x)',
+  normal:      'μ (mean), σ (std dev) — fit by MLE',
+  weibull:     'k (shape), λ (scale) — fit by MLE (Newton-Raphson)',
+  gamma:       'α (shape), β (scale) — fit by MOM',
+  rayleigh:    'σ (scale, single param) — fit by MLE',
+  exponential: 'λ (rate = 1/mean) — fit by MLE',
+  uniform:     'a (min), b (max) — fit by MOM',
+  gumbel:      'μ (location), β (scale) — fit by MOM',
+  frechet:     'α (shape), s (scale) — fit by MOM',
+  loglogistic: 'α (scale), β (shape) — fit by MOM',
+};
+const DIST_P1_LABELS = {
+  lognormal:'μ_ln', normal:'μ', weibull:'k (shape)', gamma:'α (shape)',
+  rayleigh:'σ (scale)', exponential:'λ (rate)', uniform:'a (min)',
+  gumbel:'μ (loc)', frechet:'α (shape)', loglogistic:'α (scale)',
+};
+const DIST_P2_LABELS = {
+  lognormal:'σ_ln', normal:'σ', weibull:'λ (scale)', gamma:'β (scale)',
+  rayleigh:'— (N/A)', exponential:'— (N/A)', uniform:'b (max)',
+  gumbel:'β (scale)', frechet:'s (scale)', loglogistic:'β (shape)',
+};
+
+function onDistChange(){
+  const d=document.getElementById('distType').value;
+  document.getElementById('distHint').textContent=DIST_HINTS[d]||'';
+}
+
+/* ═══════════════════════════════ MATH UTILS ═══════════════════════════ */
+const arrSum  = a=>a.reduce((s,x)=>s+x,0);
+const arrMean = a=>arrSum(a)/a.length;
+const arrMedian= a=>{const s=[...a].sort((x,y)=>x-y),m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2};
+const arrStd  = (a,ddof=1)=>{const m=arrMean(a);return Math.sqrt(a.reduce((s,x)=>s+(x-m)*(x-m),0)/Math.max(1,a.length-ddof))};
+const linspace = (lo,hi,n)=>{const a=[];for(let i=0;i<n;i++)a.push(lo+(hi-lo)*i/(n-1));return a};
+
+function erf(x){const t=1/(1+.3275911*Math.abs(x));const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-.284496736)*t+.254829592)*t*Math.exp(-x*x);return x<0?-y:y}
+function erfinv(x){const a=.147,l=Math.log(1-x*x),A=2/(Math.PI*a)+l/2;return Math.sign(x)*Math.sqrt(Math.sqrt(A*A-l/a)-A)}
+const normcdf = x=>0.5*(1+erf(x/Math.SQRT2));
+const norminv = p=>Math.SQRT2*erfinv(2*p-1);
+const normpdf = x=>Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI);
+
+/* Gamma function (Lanczos) */
+function gammaFn(z){
+  if(z<.5)return Math.PI/(Math.sin(Math.PI*z)*gammaFn(1-z));
+  z--;const g=7,c=[.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+  let x=c[0];for(let i=1;i<g+2;i++)x+=c[i]/(z+i);
+  const t=z+g+.5;return Math.sqrt(2*Math.PI)*Math.pow(t,z+.5)*Math.exp(-t)*x;
+}
+const lgamma = z=>Math.log(Math.abs(gammaFn(z)));
+
+function gamcdf_lower(x,a){if(x<=0)return 0;let s=1,t=1;for(let n=1;n<300;n++){t*=x/(a+n);s+=t;if(Math.abs(t)<1e-14*s)break}return Math.exp(-x+a*Math.log(x)-lgamma(a))*s/a}
+function gamcdf_upper(x,a){let b=x+1-a,c=1/1e-30,d=1/b,h=d;for(let i=1;i<300;i++){const an=-i*(i-a);b+=2;d=an*d+b;if(Math.abs(d)<1e-30)d=1e-30;c=b+an/c;if(Math.abs(c)<1e-30)c=1e-30;d=1/d;const del=d*c;h*=del;if(Math.abs(del-1)<1e-14)break}return Math.exp(-x+a*Math.log(x)-lgamma(a))*h}
+function gamcdf(x,a){if(x<=0)return 0;return x<a+1?gamcdf_lower(x,a):1-gamcdf_upper(x,a)}
+function gaminv(p,a){
+  if(p<=0)return 0;if(p>=1)return Infinity;
+  // Wilson-Hilferty initial guess (chi-sq approximation) — prevents Newton overshoot
+  const z=norminv(p);
+  let x=a*Math.pow(Math.max(1e-9,1-1/(9*a)+z/Math.sqrt(9*a)),3);
+  x=Math.max(1e-9,x);
+  for(let i=0;i<200;i++){
+    const Fx=gamcdf(x,a);
+    const fx=Math.exp((a-1)*Math.log(x)-x-lgamma(a));
+    if(fx<1e-300)break;
+    const dx=(Fx-p)/fx; x-=dx; if(x<=0)x=1e-10;
+    if(Math.abs(dx)<1e-10*Math.max(1,x))break;
+  }
+  return x;
+}
+
+/* ═══════════════════════════════ DISTRIBUTION FUNCTIONS ══════════════ */
+function distPDF(x,d,p1,p2){
+  const eps=1e-300;
+  if(d==='normal')    return normpdf((x-p1)/p2)/p2;
+  if(d==='lognormal') return x<=0?0:Math.exp(-0.5*((Math.log(x)-p1)/p2)*((Math.log(x)-p1)/p2))/(x*p2*Math.sqrt(2*Math.PI));
+  if(d==='weibull')   {if(x<=0)return 0;const z=x/p2;return(p1/p2)*Math.pow(z,p1-1)*Math.exp(-Math.pow(z,p1))}
+  if(d==='gamma')     {if(x<=0)return 0;return Math.exp((p1-1)*Math.log(x/p2)-x/p2-lgamma(p1))/p2}
+  if(d==='rayleigh')  return x<=0?0:(x/(p1*p1))*Math.exp(-(x*x)/(2*p1*p1));
+  if(d==='exponential')return x<0?0:p1*Math.exp(-p1*x);
+  if(d==='uniform')   return(x>=p1&&x<=p2)?1/(p2-p1):0;
+  if(d==='gumbel')    {const z=(x-p1)/p2;return Math.exp(-z-Math.exp(-z))/p2}
+  if(d==='frechet')   {if(x<=0)return 0;const z=p2/x;return(p1/p2)*Math.pow(z,p1+1)*Math.exp(-Math.pow(z,p1))}
+  if(d==='loglogistic'){if(x<=0)return 0;const z=Math.pow(x/p1,p2);return(p2/p1)*Math.pow(x/p1,p2-1)/((1+z)*(1+z))}
+  return 0;
+}
+function distCDF(x,d,p1,p2){
+  if(d==='normal')    return normcdf((x-p1)/p2);
+  if(d==='lognormal') return x<=0?0:normcdf((Math.log(x)-p1)/p2);
+  if(d==='weibull')   return x<=0?0:1-Math.exp(-Math.pow(x/p2,p1));
+  if(d==='gamma')     return gamcdf(x/p2,p1);
+  if(d==='rayleigh')  return x<=0?0:1-Math.exp(-(x*x)/(2*p1*p1));
+  if(d==='exponential')return x<0?0:1-Math.exp(-p1*x);
+  if(d==='uniform')   return x<p1?0:x>p2?1:(x-p1)/(p2-p1);
+  if(d==='gumbel')    return Math.exp(-Math.exp(-(x-p1)/p2));
+  if(d==='frechet')   return x<=0?0:Math.exp(-Math.pow(p2/x,p1));
+  if(d==='loglogistic'){if(x<=0)return 0;const z=Math.pow(x/p1,p2);return z/(1+z)}
+  return 0;
+}
+function distICDF(p,d,p1,p2){
+  p=Math.max(1e-10,Math.min(1-1e-10,p));
+  if(d==='normal')     return p1+p2*norminv(p);
+  if(d==='lognormal')  return Math.exp(p1+p2*norminv(p));
+  if(d==='weibull')    return p2*Math.pow(-Math.log(1-p),1/p1);
+  if(d==='gamma')      return gaminv(p,p1)*p2;
+  if(d==='rayleigh')   return p1*Math.sqrt(-2*Math.log(1-p));
+  if(d==='exponential')return -Math.log(1-p)/p1;
+  if(d==='uniform')    return p1+p*(p2-p1);
+  if(d==='gumbel')     return p1-p2*Math.log(-Math.log(p));
+  if(d==='frechet')    return p2/Math.pow(-Math.log(p),1/p1);
+  if(d==='loglogistic'){const z=p/(1-p);return p1*Math.pow(z,1/p2)}
+  return NaN;
+}
+function distStats(d,p1,p2){
+  if(d==='normal')    return{mu:p1,sig:p2};
+  if(d==='lognormal'){const mu=Math.exp(p1+p2*p2/2);return{mu,sig:Math.sqrt((Math.exp(p2*p2)-1)*Math.exp(2*p1+p2*p2))}}
+  if(d==='weibull')  {const mu=p2*gammaFn(1+1/p1);return{mu,sig:p2*Math.sqrt(Math.max(0,gammaFn(1+2/p1)-Math.pow(gammaFn(1+1/p1),2)))}}
+  if(d==='gamma')    return{mu:p1*p2,sig:Math.sqrt(p1)*p2};
+  if(d==='rayleigh') return{mu:p1*Math.sqrt(Math.PI/2),sig:p1*Math.sqrt((4-Math.PI)/2)};
+  if(d==='exponential')return{mu:1/p1,sig:1/p1};
+  if(d==='uniform')  return{mu:(p1+p2)/2,sig:(p2-p1)/Math.sqrt(12)};
+  if(d==='gumbel')   return{mu:p1+0.5772*p2,sig:p2*Math.PI/Math.sqrt(6)};
+  if(d==='frechet')  {const mu=p1>1?p2*gammaFn(1-1/p1):Infinity;const sig=p1>2?p2*Math.sqrt(gammaFn(1-2/p1)-Math.pow(gammaFn(1-1/p1),2)):Infinity;return{mu,sig}}
+  if(d==='loglogistic')return{mu:p1>1?p1*Math.PI/p2/Math.sin(Math.PI/p2):Infinity,sig:NaN};
+  return{mu:NaN,sig:NaN};
+}
+
+/* ═══════════════════════════════ FITTING ═════════════════════════════ */
+function fitDist(arr, d){
+  const n=arr.length, m=arrMean(arr), s=arrStd(arr), med=arrMedian(arr);
+  let p1,p2;
+
+  if(d==='normal')    {p1=m;p2=s}
+  else if(d==='lognormal'){
+    const logs=arr.map(x=>Math.log(Math.max(x,1e-300)));
+    p1=arrMean(logs);p2=arrStd(logs);
+  }
+  else if(d==='weibull'){
+    // MLE via Newton-Raphson
+    const lx=arr.map(x=>Math.log(Math.max(x,1e-300)));
+    let k=Math.max(0.1,(m/s)*(m/s));
+    for(let it=0;it<80;it++){
+      const xk=arr.map(x=>Math.pow(x,k));
+      const s1=arrSum(xk)/n;
+      const s2=arrSum(xk.map((v,i)=>v*lx[i]))/n;
+      const s3=arrMean(lx);
+      const s4=arrSum(xk.map((v,i)=>v*lx[i]*lx[i]))/n;
+      const f=1/k+s3-s2/s1;
+      const df=-1/(k*k)-((s1*s4-s2*s2)/(s1*s1));
+      const dk=f/df; k-=dk; if(k<=0)k=0.01; if(Math.abs(dk)<1e-10)break;
+    }
+    p1=k; p2=Math.pow(arrSum(arr.map(x=>Math.pow(x,k)))/n,1/k);
+  }
+  else if(d==='gamma')   {const v=s*s;p1=m*m/v;p2=v/m}
+  else if(d==='rayleigh'){p1=Math.sqrt(arrSum(arr.map(x=>x*x))/(2*n));p2=NaN}
+  else if(d==='exponential'){p1=1/m;p2=NaN}
+  else if(d==='uniform'){p1=Math.min(...arr);p2=Math.max(...arr)}
+  else if(d==='gumbel'){p2=s*Math.sqrt(6)/Math.PI;p1=m-0.5772*p2}
+  else if(d==='frechet'){
+    // MOM using log-moments
+    const lx=arr.map(x=>Math.log(Math.max(x,1e-300)));
+    const lm=arrMean(lx), ls=arrStd(lx);
+    p1=Math.max(0.1,1/ls); p2=med;
+  }
+  else if(d==='loglogistic'){
+    const lx=arr.map(x=>Math.log(Math.max(x,1e-300)));
+    const lm=arrMean(lx), ls=arrStd(lx);
+    p2=Math.PI/Math.sqrt(3)/ls; p1=Math.exp(lm);
+  }
+  else{p1=m;p2=s}
+
+  const st=distStats(d,p1,p2);
+  return{p1,p2,meanFit:st.mu,stdFit:st.sig,
+    pdf:x=>distPDF(x,d,p1,p2),
+    cdf:x=>distCDF(x,d,p1,p2),
+    icdf:p=>distICDF(p,d,p1,p2)};
+}
+
+/* ═══════════════════════════════ OUTLIERS ════════════════════════════ */
+function detectOutliers(arr, method){
+  const n=arr.length;
+  if(method==='none') return new Array(n).fill(false);
+  if(method==='mean3s'){const m=arrMean(arr),s=arrStd(arr);return arr.map(x=>Math.abs(x-m)>3*s)}
+  if(method==='median'){
+    const med=arrMedian(arr);
+    const mad=arrMedian(arr.map(x=>Math.abs(x-med)))*1.4826;
+    if(mad===0)return new Array(n).fill(false);
+    return arr.map(x=>Math.abs(x-med)/mad>3.5);
+  }
+  if(method==='iqr'){
+    const s=[...arr].sort((a,b)=>a-b);
+    const q1=s[Math.floor(n*0.25)],q3=s[Math.floor(n*0.75)],iqr=q3-q1;
+    return arr.map(x=>x<q1-1.5*iqr||x>q3+1.5*iqr);
+  }
+  if(method==='grubbs'){
+    const flags=new Array(n).fill(false);
+    for(let iter=0;iter<Math.floor(n/2);iter++){
+      const c=arr.filter((_,i)=>!flags[i]);if(c.length<3)break;
+      const m2=arrMean(c),s2=arrStd(c);
+      let maxG=0,maxIdx=-1;
+      arr.forEach((x,i)=>{if(flags[i])return;const g=Math.abs(x-m2)/s2;if(g>maxG){maxG=g;maxIdx=i;}});
+      const nc=c.length;
+      const tv=tInv(0.05/(2*nc),nc-2);
+      const Gcrit=(nc-1)/Math.sqrt(nc)*Math.sqrt(tv*tv/(nc-2+tv*tv));
+      if(maxG>Gcrit)flags[maxIdx]=true;else break;
+    }
+    return flags;
+  }
+  if(method==='gesd'){
+    const maxOut=Math.max(1,Math.floor(n*0.1));
+    const flags=new Array(n).fill(false);
+    for(let r=0;r<maxOut;r++){
+      const c=arr.filter((_,i)=>!flags[i]);if(c.length<3)break;
+      const m2=arrMean(c),s2=arrStd(c);
+      let maxG=0,maxIdx=-1;
+      arr.forEach((x,i)=>{if(flags[i])return;const g=Math.abs(x-m2)/s2;if(g>maxG){maxG=g;maxIdx=i;}});
+      const ni=c.length,tv=tInv(0.05/(2*(ni-r)),ni-r-2);
+      const lam=(ni-r-1)*tv/Math.sqrt((ni-r)*(ni-r-2+tv*tv));
+      if(maxG>lam)flags[maxIdx]=true;else break;
+    }
+    return flags;
+  }
+  return new Array(n).fill(false);
+}
+function tInv(p,df){const z=norminv(1-p/2);return z+(z*z*z+z)/(4*df)+(5*z*z*z*z*z+16*z*z*z+3*z)/(96*df*df)}
+
+/* ═══════════════════════════════ HISTOGRAM ═══════════════════════════ */
+function fdBins(arr,xlo,xhi){
+  const s=[...arr].sort((a,b)=>a-b),n=arr.length;
+  const q1=s[Math.floor(n*0.25)],q3=s[Math.floor(n*0.75)],iqr=q3-q1;
+  const h=iqr>0?2*iqr*Math.pow(n,-1/3):(xhi-xlo)/Math.max(5,Math.ceil(Math.sqrt(n)));
+  const nb=Math.max(5,Math.min(80,Math.ceil((xhi-xlo)/h)));
+  const edges=[];for(let i=0;i<=nb;i++)edges.push(xlo+i*(xhi-xlo)/nb);
+  return edges;
+}
+function histPDF(arr,edges){
+  const n=arr.length,nb=edges.length-1;
+  const counts=new Array(nb).fill(0);
+  arr.forEach(x=>{for(let i=0;i<nb;i++){if((x>=edges[i]&&x<edges[i+1])||(i===nb-1&&x===edges[nb])){counts[i]++;break;}}});
+  const centers=[],densities=[],widths=[];
+  for(let i=0;i<nb;i++){centers.push((edges[i]+edges[i+1])/2);widths.push(edges[i+1]-edges[i]);densities.push(counts[i]/(n*widths[i]));}
+  return{centers,densities,widths};
+}
+function ecdfPts(arr){const s=[...arr].sort((a,b)=>a-b);return s.map((x,i)=>({x,p:(i+1)/s.length}))}
+
+/* ═══════════════════════════════ GOF TESTS ═══════════════════════════ */
+function ksTest(arr,cdfFn){
+  const s=[...arr].sort((a,b)=>a-b),n=s.length;
+  let D=0;
+  s.forEach((x,i)=>{D=Math.max(D,Math.abs((i+1)/n-cdfFn(x)),Math.abs(i/n-cdfFn(x)))});
+  const sq=Math.sqrt(n),lam=(sq+.12+.11/sq)*D;
+  let p=2*[1,2,3,4,5].reduce((t,j)=>t+(j%2===1?1:-1)*Math.exp(-2*j*j*lam*lam),0);
+  p=Math.max(0,Math.min(1,p));return{stat:D,p,reject:p<0.05};
+}
+function chiSqTest(arr,cdfFn){
+  const n=arr.length,k=Math.max(5,Math.ceil(Math.sqrt(n)));
+  const s=[...arr].sort((a,b)=>a-b);
+  const edges=[s[0]-1e-9];
+  for(let i=1;i<k;i++){let lo=s[0],hi=s[s.length-1];const p=i/k;for(let it=0;it<60;it++){const m=(lo+hi)/2;cdfFn(m)<p?lo=m:hi=m;}edges.push((lo+hi)/2);}
+  edges.push(s[s.length-1]+1e-9);
+  const obs=new Array(k).fill(0);
+  s.forEach(x=>{let b=edges.findIndex((e,i)=>i<k&&x>=edges[i]&&x<edges[i+1]);if(b>=0)obs[b]++;});
+  const exp=n/k;
+  const chi2=obs.reduce((t,o)=>exp>0?t+(o-exp)*(o-exp)/exp:t,0);
+  const df=Math.max(1,k-3);
+  const p=1-gamcdf(chi2*0.5,df*0.5);
+  return{stat:chi2,df,p,reject:p<0.05};
+}
+function lillieforsTest(arr,disttype){
+  // Apply KS on log-transformed data for lognormal, raw otherwise
+  const vals=disttype==='lognormal'?arr.map(x=>Math.log(Math.max(x,1e-300))):[...arr];
+  const m=arrMean(vals),s=arrStd(vals);
+  const res=ksTest(vals,x=>normcdf((x-m)/s));
+  const n=vals.length,Dcrit=0.895/Math.sqrt(n)-0.01+0.85/n;
+  return{stat:res.stat,p:res.p,reject:res.stat>Dcrit};
+}
+function adTest(arr,cdfFn){
+  const s=[...arr].sort((a,b)=>a-b),n=s.length;
+  let A2=0;
+  s.forEach((x,i)=>{
+    const F=Math.max(1e-12,Math.min(1-1e-12,cdfFn(x)));
+    const F2=Math.max(1e-12,Math.min(1-1e-12,cdfFn(s[n-1-i])));
+    A2+=(2*(i+1)-1)*(Math.log(F)+Math.log(1-F2));
+  });
+  A2=-n-A2/n;
+  const A2a=A2*(1+0.75/n+2.25/(n*n));
+  let p;
+  if(A2a>=0.6)      p=Math.exp(1.2937-5.709*A2a+0.0186*A2a*A2a);
+  else if(A2a>=0.34)p=Math.exp(0.9177-4.279*A2a-1.38*A2a*A2a);
+  else if(A2a>=0.2) p=1-Math.exp(-8.318+42.796*A2a-59.938*A2a*A2a);
+  else              p=1-Math.exp(-13.436+101.14*A2a-223.73*A2a*A2a);
+  p=Math.max(0,Math.min(1,p));return{stat:A2a,p,reject:p<0.05};
+}
+
+/* ═══════════════════════════════ FILE LOAD ════════════════════════════ */
+function loadFile(file){
+  if(!file)return;
+  document.getElementById('fname').textContent='⏳ '+file.name;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const nums=e.target.result.split(/[\s,;|\t\r\n]+/).map(s=>parseFloat(s.replace(',','.'))).filter(x=>isFinite(x)&&!isNaN(x));
+    if(nums.length<5){document.getElementById('fname').textContent='⚠ Too few values — check file';return}
+    rawData=nums;
+    document.getElementById('nPts').value=nums.length;
+    document.getElementById('btnRun').disabled=false;
+    // Auto set xlim from data
+    const mn=Math.min(...nums),mx=Math.max(...nums),r=mx-mn;
+    document.getElementById('xlimMin').value=(mn-0.1*r).toFixed(3);
+    document.getElementById('xlimMax').value=(mx+0.1*r).toFixed(3);
+    document.getElementById('fname').textContent='✓ '+file.name;
+    document.getElementById('logBox').textContent=
+      '===== File Loaded =====\nFile  : '+file.name+'\nN     : '+nums.length+'\nMin   : '+Math.min(...nums).toFixed(4)+'\nMax   : '+Math.max(...nums).toFixed(4)+'\nMean  : '+arrMean(nums).toFixed(4)+'\nStd   : '+arrStd(nums).toFixed(4)+'\n\nConfigure settings and click Run Analysis.';
+    setStatus('File loaded: '+nums.length+' values. Click Run Analysis.','ok');
+  };
+  reader.onerror=()=>{document.getElementById('fname').textContent='⚠ Error reading file';};
+  reader.readAsText(file);
+}
+window.addEventListener('DOMContentLoaded',()=>{
+  const zone=document.getElementById('uploadZone');
+  zone.addEventListener('dragover',e=>{e.preventDefault();e.stopPropagation();zone.style.borderColor='var(--accent)';});
+  zone.addEventListener('dragleave',e=>{e.preventDefault();zone.style.borderColor='';});
+  zone.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();zone.style.borderColor='';const f=e.dataTransfer.files[0];if(f)loadFile(f);});
+  document.getElementById('fileIn').addEventListener('change',function(){loadFile(this.files[0])});
+  document.querySelectorAll('.tab').forEach((t,i)=>t.addEventListener('click',()=>showTab(i)));
+});
+
+/* ═══════════════════════════════ RUN ═════════════════════════════════ */
+function runAnalysis(){
+  if(!rawData||rawData.length<5){alert('Load a data file first.');return}
+  const dist     = document.getElementById('distType').value;
+  const outMeth  = document.getElementById('outlierMethod').value;
+  const xmin     = parseFloat(document.getElementById('xlimMin').value);
+  const xmax     = parseFloat(document.getElementById('xlimMax').value);
+  const xlabel   = document.getElementById('xlabel').value||'x';
+  setStatus('Running analysis…','running');
+
+  // Outliers
+  const flags = detectOutliers(rawData, outMeth);
+  const outlierVals = rawData.filter((_,i)=>flags[i]);
+  const clean = rawData.filter((_,i)=>!flags[i]);
+  if(clean.length<5){setStatus('Too few values after outlier removal.','err');return}
+
+  // Fit
+  const fit = fitDist(clean, dist);
+  fitResult = {fit, clean, dist, xmin, xmax, xlabel};
+
+  // Stats (go to log only now)
+  document.getElementById('distBadge').textContent=dist.charAt(0).toUpperCase()+dist.slice(1);
+
+  // GoF
+  const ksR = ksTest(clean,fit.cdf);
+  const chiR= chiSqTest(clean,fit.cdf);
+  const lilR= lillieforsTest(clean,dist);
+  const adR = adTest(clean,fit.cdf);
+  setGC('gc-ks', 'K–S Test',       ksR.reject,  `p = ${ksR.p.toFixed(4)}`);
+  setGC('gc-chi','Chi-squared',     chiR.reject, `p = ${chiR.p.toFixed(4)}`);
+  setGC('gc-lil','Lilliefors',      lilR.reject, `stat = ${lilR.stat.toFixed(4)}`);
+  setGC('gc-ad', 'Anderson–Darling',adR.reject,  `A² = ${adR.stat.toFixed(4)}`);
+
+  // Outlier display
+  document.getElementById('outBox').textContent=outlierVals.length?outlierVals.map(v=>v.toFixed(4)).join(', '):'None detected';
+
+  // Curve x grid
+  const xlo=Math.max(1e-300,fit.icdf(0.001)||xmin);
+  const xhi=fit.icdf(0.999)||xmax;
+  const xs=linspace(Math.max(xmin,xlo),Math.min(xmax,xhi),500);
+
+  // Y max for PDF
+  const ylimRaw = parseFloat(document.getElementById('ylimMax').value);
+  const ylimMax = isFinite(ylimRaw) && ylimRaw > 0 ? ylimRaw : null;
+
+  drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax);
+  drawCDF(clean,fit,xs,xmin,xmax,xlabel,dist);
+  drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,ksR,chiR,lilR,adR,ylimMax);
+
+  // Log
+  document.getElementById('logBox').textContent=buildLog(rawData.length,clean.length,outlierVals.length,outMeth,clean,fit,dist,ksR,chiR,lilR,adR);
+
+  setStatus(`Done — N=${clean.length} · dist=${dist} · KS p=${ksR.p.toFixed(3)} · AD A²=${adR.stat.toFixed(4)}`,'ok');
+  calcInverse();
+}
+
+function setGC(id,name,reject,stat){
+  const el=document.getElementById(id);
+  el.className='gc '+(reject?'fail':'pass');
+  el.innerHTML=`<span class="gc-name">${name}</span><span class="gc-res">${reject?'FAIL':'PASS'}</span><span class="gc-p">${stat}</span>`;
+}
+
+/* ── shared chart colours (white background) ── */
+const CHT = {
+  axTick:'#444', axTitle:'#333', axGrid:'rgba(0,0,0,.07)',
+  hist:'rgba(33,118,174,.25)', histBorder:'rgba(33,118,174,.55)',
+  pdf:'#c0392b', cdf:'#d4870a', edf:'rgba(80,90,110,.6)',
+  mean:'#c0392b', sigma:'#27ae60', inv:'#8e44ad',
+  bg: {color:'white'}
+};
+
+/* ═══════════════════════════════ DRAW PDF ════════════════════════════ */
+function drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax){
+  document.getElementById('pdfPH').style.display='none';
+  const canvas=document.getElementById('pdfChart');canvas.style.display='block';
+  if(charts.pdfChart){charts.pdfChart.destroy();charts.pdfChart=null;}
+  const edges=fdBins(clean,xmin,xmax);
+  const hist=histPDF(clean,edges);
+  const mFit=fit.meanFit, sFit=isFinite(fit.stdFit)?fit.stdFit:0;
+  const yOpts = ylimMax ? {min:0,max:ylimMax} : {beginAtZero:true};
+
+  charts.pdfChart=new Chart(canvas,{
+    type:'bar',
+    data:{
+      labels:hist.centers.map(c=>c.toFixed(3)),
+      datasets:[
+        {label:'Histogram',data:hist.densities,backgroundColor:CHT.hist,borderColor:CHT.histBorder,borderWidth:0.5,barPercentage:1,categoryPercentage:1,order:2},
+        {label:`PDF — ${dist}`,data:hist.centers.map(c=>fit.pdf(c)),type:'line',borderColor:CHT.pdf,borderWidth:2,pointRadius:0,fill:false,tension:.4,order:1}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,animation:false,
+      backgroundColor:'white',
+      scales:{
+        x:{title:{display:true,text:xlabel,color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10},maxTicksLimit:10},grid:{color:CHT.axGrid}},
+        y:{...yOpts,title:{display:true,text:'f(x)',color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10}},grid:{color:CHT.axGrid}}
+      },
+      plugins:{
+        legend:{labels:{color:'#333',font:{size:10}}},
+        customCanvasBackgroundColor:{color:'white'}
+      }
+    },
+    plugins:[whiteBackground(), annotationPlugin(mFit,sFit,null,null)]
+  });
+}
+
+/* ═══════════════════════════════ DRAW CDF ════════════════════════════ */
+function drawCDF(clean,fit,xs,xmin,xmax,xlabel,dist){
+  document.getElementById('cdfPH').style.display='none';
+  const canvas=document.getElementById('cdfChart');canvas.style.display='block';
+  if(charts.cdfChart){charts.cdfChart.destroy();charts.cdfChart=null;}
+  const ecdf=ecdfPts(clean);
+  charts.cdfChart=new Chart(canvas,{
+    type:'line',
+    data:{datasets:[
+      {label:'EDF (empirical)',data:ecdf.map(pt=>({x:pt.x,y:pt.p})),borderColor:CHT.edf,borderWidth:1.2,pointRadius:2,pointBackgroundColor:CHT.edf,fill:false,stepped:true,order:2},
+      {label:`CDF — ${dist}`,data:xs.map(x=>({x,y:fit.cdf(x)})),borderColor:CHT.cdf,borderWidth:2,pointRadius:0,fill:false,tension:.3,order:1}
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,animation:false,
+      scales:{
+        x:{type:'linear',min:xmin,max:xmax,title:{display:true,text:xlabel,color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10}},grid:{color:CHT.axGrid}},
+        y:{min:0,max:1,title:{display:true,text:'F(x)',color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10}},grid:{color:CHT.axGrid}}
+      },
+      plugins:{legend:{labels:{color:'#333',font:{size:10}}}}
+    },
+    plugins:[whiteBackground()]
+  });
+}
+
+/* ═══════════════════════════════ DRAW COMBINED ═══════════════════════ */
+function drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,ksR,chiR,lilR,adR,ylimMax){
+  document.getElementById('combPH').style.display='none';
+  const canvas=document.getElementById('combChart');canvas.style.display='block';
+  if(charts.combChart){charts.combChart.destroy();charts.combChart=null;}
+  const edges=fdBins(clean,xmin,xmax);
+  const hist=histPDF(clean,edges);
+  const ecdf=ecdfPts(clean);
+  const mFit=fit.meanFit, sFit=isFinite(fit.stdFit)?fit.stdFit:0;
+  const yLOpts = ylimMax ? {min:0,max:ylimMax} : {beginAtZero:true};
+
+  charts.combChart=new Chart(canvas,{
+    type:'bar',
+    data:{
+      labels:hist.centers.map(c=>c.toFixed(3)),
+      datasets:[
+        {label:'Histogram',data:hist.densities,backgroundColor:CHT.hist,borderColor:CHT.histBorder,borderWidth:0.5,barPercentage:1,categoryPercentage:1,yAxisID:'yL',order:4},
+        {label:`PDF — ${dist}`,data:hist.centers.map(c=>fit.pdf(c)),type:'line',borderColor:CHT.pdf,borderWidth:2,pointRadius:0,fill:false,tension:.4,yAxisID:'yL',order:3},
+        {label:'EDF',data:hist.centers.map(c=>{const e=ecdf.find(pt=>pt.x>=c);return e?e.p:null}),type:'line',borderColor:CHT.edf,borderWidth:1,pointRadius:0,fill:false,stepped:true,yAxisID:'yR',order:2,spanGaps:false},
+        {label:`CDF — ${dist}`,data:hist.centers.map(c=>fit.cdf(c)),type:'line',borderColor:CHT.cdf,borderWidth:2,pointRadius:0,fill:false,tension:.3,yAxisID:'yR',order:1}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,animation:false,
+      scales:{
+        x:{title:{display:true,text:xlabel,color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10},maxTicksLimit:10},grid:{color:CHT.axGrid}},
+        yL:{type:'linear',position:'left',...yLOpts,title:{display:true,text:'f(x)',color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10}},grid:{color:CHT.axGrid}},
+        yR:{type:'linear',position:'right',min:0,max:1,title:{display:true,text:'F(x)',color:CHT.cdf,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10}},grid:{drawOnChartArea:false}}
+      },
+      plugins:{legend:{labels:{color:'#333',font:{size:10}}}}
+    },
+    plugins:[whiteBackground(), annotationPlugin(mFit,sFit,'yL',null)]
+  });
+
+  // GoF summary row below combined chart
+  document.getElementById('combInfo').innerHTML=
+    `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:7px;font-family:var(--mono);font-size:11px;color:var(--txt2);margin-top:4px">
+      <div><span style="color:var(--txt3)">K–S:</span> <span style="color:${ksR.reject?'var(--warn)':'var(--green)'}">${ksR.reject?'FAIL':'PASS'}</span>&nbsp;p=${ksR.p.toFixed(4)}</div>
+      <div><span style="color:var(--txt3)">χ²:</span> <span style="color:${chiR.reject?'var(--warn)':'var(--green)'}">${chiR.reject?'FAIL':'PASS'}</span>&nbsp;p=${chiR.p.toFixed(4)}</div>
+      <div><span style="color:var(--txt3)">Lill.:</span> <span style="color:${lilR.reject?'var(--warn)':'var(--green)'}">${lilR.reject?'FAIL':'PASS'}</span>&nbsp;stat=${lilR.stat.toFixed(4)}</div>
+      <div><span style="color:var(--txt3)">A–D:</span> <span style="color:${adR.reject?'var(--warn)':'var(--green)'}">${adR.reject?'FAIL':'PASS'}</span>&nbsp;A²=${adR.stat.toFixed(4)}</div>
+    </div>`;
+}
+
+/* ═══════════════════════════════ WHITE BACKGROUND PLUGIN ══════════════ */
+function whiteBackground(){
+  return{
+    id:'whiteBackground',
+    beforeDraw(chart){
+      const ctx=chart.ctx;
+      ctx.save();ctx.globalCompositeOperation='destination-over';
+      ctx.fillStyle='white';ctx.fillRect(0,0,chart.width,chart.height);ctx.restore();
+    }
+  };
+}
+
+/* ═══════════════════════════════ ANNOTATION PLUGIN ══════════════════ */
+// invLine: {val, p} — draws the inverse probability vertical on PDF too
+function annotationPlugin(mFit,sFit,yAxisID,invLine){
+  return{
+    id:'vlines',
+    afterDraw(chart){
+      const ctx=chart.ctx;
+      const xsc=chart.scales.x;
+      const ysc=chart.scales[yAxisID||'y'];
+      if(!xsc||!ysc||!isFinite(mFit))return;
+      const labels=chart.data.labels;
+      function xpx(val){
+        if(xsc.type==='linear')return xsc.getPixelForValue(val);
+        let bi=0,bd=Infinity;
+        labels.forEach((l,i)=>{const dv=Math.abs(parseFloat(l)-val);if(dv<bd){bd=dv;bi=i;}});
+        return xsc.getPixelForValue(bi);
+      }
+      const yb  = ysc.getPixelForValue(0);
+      const yt90= ysc.getPixelForValue(ysc.max*0.93);
+      const yt65= ysc.getPixelForValue(ysc.max*0.65);
+      ctx.save();
+      // mean line
+      ctx.strokeStyle=CHT.mean;ctx.lineWidth=1.3;ctx.setLineDash([5,3]);
+      ctx.beginPath();ctx.moveTo(xpx(mFit),yb);ctx.lineTo(xpx(mFit),yt90);ctx.stroke();
+      ctx.fillStyle=CHT.mean;ctx.font='bold 9px monospace';
+      ctx.save();ctx.translate(xpx(mFit)+10,yt90+4);ctx.rotate(Math.PI/2);
+      ctx.fillText('μ = '+mFit.toFixed(3),0,0);ctx.restore();
+      // ±σ lines
+      if(sFit>0){
+        const posOnly=['lognormal','weibull','gamma','rayleigh','frechet','loglogistic','exponential'];
+        [mFit-sFit,mFit+sFit].forEach((v,i)=>{
+          if(v<=0 && posOnly.includes(fitResult?.dist)) return;
+          ctx.strokeStyle=CHT.sigma;ctx.lineWidth=0.9;ctx.setLineDash([3,3]);
+          ctx.beginPath();ctx.moveTo(xpx(v),yb);ctx.lineTo(xpx(v),yt65);ctx.stroke();
+          ctx.fillStyle=CHT.sigma;ctx.font='9px monospace';
+          ctx.save();ctx.translate(xpx(v)+10,yt65+4);ctx.rotate(Math.PI/2);
+          ctx.fillText((i===0?'μ−σ':'μ+σ')+' = '+v.toFixed(3),0,0);ctx.restore();
+        });
+      }
+      // inverse probability line
+      if(invLine && isFinite(invLine.val)){
+        const iv=invLine.val;
+        ctx.strokeStyle=CHT.inv;ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
+        ctx.beginPath();ctx.moveTo(xpx(iv),yb);ctx.lineTo(xpx(iv),yt90);ctx.stroke();
+        ctx.fillStyle=CHT.inv;ctx.font='bold 9px monospace';
+        ctx.save();ctx.translate(xpx(iv)+10,yt90+4);ctx.rotate(Math.PI/2);
+        ctx.fillText('x(p='+invLine.p+') = '+iv.toFixed(3),0,0);ctx.restore();
+      }
+      ctx.restore();
+    }
+  };
+}
+
+/* ═══════════════════════════════ INVERSE ═════════════════════════════ */
+function calcInverse(){
+  if(!fitResult){document.getElementById('invResult').textContent='Run analysis first';return}
+  const p=parseFloat(document.getElementById('invProb').value);
+  if(isNaN(p)||p<=0||p>=1){document.getElementById('invResult').textContent='Invalid p';return}
+  const val=fitResult.fit.icdf(p);
+  document.getElementById('invResult').textContent=`x(p=${p}) = ${val.toFixed(5)}`;
+  const invLine={val,p};
+
+  // — CDF: vertical + horizontal dashed lines meeting at (val, p)
+  if(charts.cdfChart){
+    charts.cdfChart.data.datasets=charts.cdfChart.data.datasets.filter(d=>!d.label.startsWith('x(p'));
+    charts.cdfChart.data.datasets.push({
+      label:`x(p=${p}) = ${val.toFixed(3)}`,
+      data:[{x:fitResult.xmin,y:p},{x:val,y:p},{x:val,y:0}],
+      borderColor:CHT.inv,borderWidth:1.5,borderDash:[4,4],
+      pointRadius:[0,5,0],pointBackgroundColor:CHT.inv,
+      pointBorderColor:CHT.inv,fill:false,order:0,tension:0
+    });
+    charts.cdfChart.update();
+  }
+
+  // — PDF: redraw with inverse line baked into annotation plugin
+  if(fitResult && charts.pdfChart){
+    charts.pdfChart.destroy();
+    const {clean,fit,xmin,xmax,xlabel,dist}=fitResult;
+    const edges=fdBins(clean,xmin,xmax);
+    const hist=histPDF(clean,edges);
+    const mFit=fit.meanFit, sFit=isFinite(fit.stdFit)?fit.stdFit:0;
+    const ylimRaw=parseFloat(document.getElementById('ylimMax').value);
+    const ylimMax=isFinite(ylimRaw)&&ylimRaw>0?ylimRaw:null;
+    const yOpts=ylimMax?{min:0,max:ylimMax}:{beginAtZero:true};
+    charts.pdfChart=new Chart(document.getElementById('pdfChart'),{
+      type:'bar',
+      data:{
+        labels:hist.centers.map(c=>c.toFixed(3)),
+        datasets:[
+          {label:'Histogram',data:hist.densities,backgroundColor:CHT.hist,borderColor:CHT.histBorder,borderWidth:0.5,barPercentage:1,categoryPercentage:1,order:2},
+          {label:`PDF — ${dist}`,data:hist.centers.map(c=>fit.pdf(c)),type:'line',borderColor:CHT.pdf,borderWidth:2,pointRadius:0,fill:false,tension:.4,order:1}
+        ]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,animation:false,
+        scales:{
+          x:{title:{display:true,text:xlabel,color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10},maxTicksLimit:10},grid:{color:CHT.axGrid}},
+          y:{...yOpts,title:{display:true,text:'f(x)',color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10}},grid:{color:CHT.axGrid}}
+        },
+        plugins:{legend:{labels:{color:'#333',font:{size:10}}}}
+      },
+      plugins:[whiteBackground(), annotationPlugin(mFit,sFit,null,invLine)]
+    });
+  }
+
+  // — Combined: redraw with inverse line
+  if(fitResult && charts.combChart){
+    const {clean,fit,xmin,xmax,xlabel,dist}=fitResult;
+    const edges=fdBins(clean,xmin,xmax);
+    const hist=histPDF(clean,edges);
+    const ecdf=ecdfPts(clean);
+    const mFit=fit.meanFit, sFit=isFinite(fit.stdFit)?fit.stdFit:0;
+    const ylimRaw=parseFloat(document.getElementById('ylimMax').value);
+    const ylimMax=isFinite(ylimRaw)&&ylimRaw>0?ylimRaw:null;
+    const yLOpts=ylimMax?{min:0,max:ylimMax}:{beginAtZero:true};
+    charts.combChart.destroy();
+    charts.combChart=new Chart(document.getElementById('combChart'),{
+      type:'bar',
+      data:{
+        labels:hist.centers.map(c=>c.toFixed(3)),
+        datasets:[
+          {label:'Histogram',data:hist.densities,backgroundColor:CHT.hist,borderColor:CHT.histBorder,borderWidth:0.5,barPercentage:1,categoryPercentage:1,yAxisID:'yL',order:4},
+          {label:`PDF — ${dist}`,data:hist.centers.map(c=>fit.pdf(c)),type:'line',borderColor:CHT.pdf,borderWidth:2,pointRadius:0,fill:false,tension:.4,yAxisID:'yL',order:3},
+          {label:'EDF',data:hist.centers.map(c=>{const e=ecdf.find(pt=>pt.x>=c);return e?e.p:null}),type:'line',borderColor:CHT.edf,borderWidth:1,pointRadius:0,fill:false,stepped:true,yAxisID:'yR',order:2,spanGaps:false},
+          {label:`CDF — ${dist}`,data:hist.centers.map(c=>fit.cdf(c)),type:'line',borderColor:CHT.cdf,borderWidth:2,pointRadius:0,fill:false,tension:.3,yAxisID:'yR',order:1}
+        ]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,animation:false,
+        scales:{
+          x:{title:{display:true,text:xlabel,color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10},maxTicksLimit:10},grid:{color:CHT.axGrid}},
+          yL:{type:'linear',position:'left',...yLOpts,title:{display:true,text:'f(x)',color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10}},grid:{color:CHT.axGrid}},
+          yR:{type:'linear',position:'right',min:0,max:1,title:{display:true,text:'F(x)',color:CHT.cdf,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10}},grid:{drawOnChartArea:false}}
+        },
+        plugins:{legend:{labels:{color:'#333',font:{size:10}}}}
+      },
+      plugins:[whiteBackground(), annotationPlugin(mFit,sFit,'yL',invLine)]
+    });
+  }
+}
+
+/* ═══════════════════════════════ TABS ════════════════════════════════ */
+function showTab(idx){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===idx));
+  document.querySelectorAll('.tabpanel').forEach((p,i)=>p.classList.toggle('active',i===idx));
+}
+
+/* ═══════════════════════════════ SAVE / EXPORT ══════════════════════ */
+function getActiveCanvas(){
+  const panel=document.querySelector('.tabpanel.active');
+  return panel?panel.querySelector('canvas'):null;
+}
+function downloadCanvas(canvas,name){
+  const a=document.createElement('a');a.href=canvas.toDataURL('image/png');a.download=name;a.click();
+}
+
+function savePNG(){
+  const c=getActiveCanvas();
+  if(!c){alert('Run analysis first, or switch to a chart tab.');return}
+  const idx=[...document.querySelectorAll('.tab')].findIndex(t=>t.classList.contains('active'));
+  downloadCanvas(c,['distribution_pdf','distribution_cdf','distribution_combined'][idx]+'.png');
+}
+
+function saveAllPNG(){
+  if(!fitResult){alert('Run analysis first.');return}
+  [['pdfChart','distribution_pdf'],['cdfChart','distribution_cdf'],['combChart','distribution_combined']].forEach(([id,name])=>{
+    const c=document.getElementById(id);
+    if(c&&c.style.display!=='none') downloadCanvas(c,name+'.png');
+  });
+}
+
+function saveCSV(){
+  if(!fitResult){alert('Run analysis first.');return}
+  const {clean,dist,fit}=fitResult;
+  const p1l=DIST_P1_LABELS[dist]||'p1', p2l=DIST_P2_LABELS[dist]||'p2';
+  let csv=`# Distribution Fitting Tool — UPCE\n# Özgür Yurdakul, Faculty of Transport Engineering, University of Pardubice\n`;
+  csv+=`# Distribution: ${dist}\n# ${p1l} = ${fit.p1}\n# ${p2l} = ${isNaN(fit.p2)?'N/A':fit.p2}\n`;
+  csv+=`# Mean (fit) = ${isFinite(fit.meanFit)?fit.meanFit.toFixed(6):'Inf'}\n# Std (fit) = ${isFinite(fit.stdFit)?fit.stdFit.toFixed(6):'Inf'}\n# N = ${clean.length}\n#\n`;
+  csv+=`x,pdf,cdf\n`;
+  linspace(fitResult.xmin,fitResult.xmax,500).forEach(x=>{
+    csv+=`${x.toFixed(6)},${fit.pdf(x).toFixed(8)},${fit.cdf(x).toFixed(8)}\n`;
+  });
+  csv+=`\n# Cleaned data\nindex,value\n`;
+  clean.forEach((v,i)=>{csv+=`${i+1},${v}\n`});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download='distribution_fit_data.csv';a.click();
+}
+
+/* ═══════════════════════════════ LOG ═════════════════════════════════ */
+function buildLog(nRaw,nClean,nOut,outMeth,clean,fit,dist,ks,chi,lil,ad){
+  const m=arrMean(clean),s=arrStd(clean),med=arrMedian(clean);
+  const p1l=DIST_P1_LABELS[dist]||'p1',p2l=DIST_P2_LABELS[dist]||'p2';
+  return `===== Data Summary =====
+N raw            : ${nRaw}
+N (after removal): ${nClean}  (removed: ${nOut}, method: ${outMeth})
+Min              : ${Math.min(...clean).toFixed(5)}
+Max              : ${Math.max(...clean).toFixed(5)}
+Mean (data)      : ${m.toFixed(5)}
+Median (data)    : ${med.toFixed(5)}
+Std Dev (data)   : ${s.toFixed(5)}
+CoV (data)       : ${(s/m*100).toFixed(3)} %
+
+===== Fitted Distribution (${dist}) =====
+${p1l.padEnd(16)}: ${fit.p1.toFixed(6)}
+${p2l.padEnd(16)}: ${isNaN(fit.p2)?'N/A':fit.p2.toFixed(6)}
+Mean (fit)       : ${isFinite(fit.meanFit)?fit.meanFit.toFixed(5):'Inf'}
+Std Dev (fit)    : ${isFinite(fit.stdFit)?fit.stdFit.toFixed(5):'Inf'}
+CoV (fit)        : ${isFinite(fit.stdFit)&&isFinite(fit.meanFit)?(fit.stdFit/fit.meanFit*100).toFixed(3)+' %':'—'}
+
+===== Goodness-of-Fit (α = 0.05) =====
+K-S test         : ${ks.reject?'FAIL':'PASS'}  (p = ${ks.p.toFixed(5)})
+Chi-squared      : ${chi.reject?'FAIL':'PASS'}  (p = ${chi.p.toFixed(5)})
+Lilliefors       : ${lil.reject?'FAIL':'PASS'}  (stat = ${lil.stat.toFixed(5)})
+Anderson-Darling : ${ad.reject?'FAIL':'PASS'}  (A² = ${ad.stat.toFixed(5)})`;
+}
+
+function setStatus(msg,state){
+  const b=document.getElementById('statusbar');b.className=state;
+  document.getElementById('stxt').textContent=msg;
+}
+</script>
+</body>
+</html>

@@ -530,77 +530,90 @@ function runGOF(xi,dist,p1,p2){
     const p=1-gamcdf(chi2/2,df/2);res.push({name:'χ²',p,pass:p>=al});
   }
   // ── Lilliefors ──────────────────────────────────────────────────
+  // The Lilliefors test is a KS test where parameters are ESTIMATED from
+  // the sample rather than specified a priori. This requires different
+  // (smaller) critical values than the standard KS test.
+  //
+  // Implementation follows:
+  //   Normal    : Dallal & Wilkinson (1986) p-value formula
+  //   Lognormal : log-transform then apply normal Lilliefors
+  //   Weibull   : MLE parameters + Stephens (1986) CV scaling
+  //   Gamma     : MOM parameters + Stephens (1986) CV scaling
+  //   Rayleigh  : MLE parameter  + Stephens (1986) CV scaling
+  //
+  // Correction factor for non-normal: Lilliefors CV ≈ KS_CV / f where
+  //   f = 1.533 (normal), 1.533 (lognormal), 1.340 (weibull),
+  //       1.338 (gamma), 1.360 (rayleigh)   [Stephens 1986, Table 4.2]
+  // p-value is obtained by evaluating the KS distribution at D*f.
   if(document.getElementById('gof-ll').checked){
-    // Step 1: estimate parameters from sample (MLE / method of moments)
-    let ep1, ep2, edist=dist;
     const xm=sorted.reduce((a,b)=>a+b,0)/n;
-    const xs=Math.sqrt(sorted.reduce((a,b)=>a+(b-xm)*(b-xm),0)/n); // biased std for MLE
+    const xs=Math.sqrt(sorted.reduce((a,b)=>a+(b-xm)*(b-xm),0)/n);
+
+    // Step 1: estimate parameters from sample
+    let ep1, ep2;
     switch(dist){
       case 'normal':
         ep1=xm; ep2=xs; break;
       case 'lognormal': {
-        // MLE: mu_ln = mean(log(x)), sigma_ln = std(log(x))
         const lx=sorted.map(v=>Math.log(Math.max(v,1e-300)));
         ep1=lx.reduce((a,b)=>a+b,0)/n;
         ep2=Math.sqrt(lx.reduce((a,b)=>a+(b-ep1)*(b-ep1),0)/n);
         break;
       }
       case 'weibull': {
-        // MLE via iterative Newton (shape k, then scale lambda)
+        const lx=sorted.map(v=>Math.log(Math.max(v,1e-300)));
         let k=1.2;
-        for(let it=0;it<50;it++){
-          const lx=sorted.map(v=>Math.log(Math.max(v,1e-300)));
+        for(let it=0;it<60;it++){
           const xk=sorted.map(v=>Math.pow(v,k));
           const s1=xk.reduce((a,b)=>a+b,0);
           const s2=xk.reduce((a,b,i)=>a+b*lx[i],0);
           const s3=lx.reduce((a,b)=>a+b,0);
-          const f=n/k + s3 - n*s2/s1;
-          const df=-n/(k*k) - n*(s1*xk.reduce((a,b,i)=>a+b*lx[i]*lx[i],0)-s2*s2)/(s1*s1);
-          const dk=f/df; k-=dk;
-          if(k<=0) k=0.1;
-          if(Math.abs(dk)<1e-8) break;
+          const xk2=xk.map((v,i)=>v*lx[i]*lx[i]);
+          const f=n/k+s3-n*s2/s1;
+          const df=-n/(k*k)-n*(s1*xk2.reduce((a,b)=>a+b,0)-s2*s2)/(s1*s1);
+          const dk=f/df; k-=dk; if(k<=0)k=0.1; if(Math.abs(dk)<1e-10)break;
         }
-        const lam=Math.pow(sorted.map(v=>Math.pow(v,k)).reduce((a,b)=>a+b,0)/n, 1/k);
-        ep1=k; ep2=lam; break;
+        ep1=k;
+        ep2=Math.pow(sorted.map(v=>Math.pow(v,k)).reduce((a,b)=>a+b,0)/n,1/k);
+        break;
       }
       case 'gamma': {
-        // MOM: shape=mean^2/var, scale=var/mean
         const v2=sorted.reduce((a,b)=>a+(b-xm)*(b-xm),0)/n;
-        ep1=(xm*xm)/v2; ep2=v2/xm; break;
+        ep1=Math.max(0.01,(xm*xm)/v2); ep2=v2/Math.max(1e-10,xm); break;
       }
-      case 'rayleigh': {
-        // MLE: sigma = sqrt(sum(x^2)/(2n))
+      case 'rayleigh':
         ep1=Math.sqrt(sorted.reduce((a,b)=>a+b*b,0)/(2*n));
         ep2=NaN; break;
-      }
     }
 
-    // Step 2: KS statistic with estimated parameters
-    let D=0;
+    // Step 2: KS statistic D with estimated parameters
+    let Dll=0;
     for(let i=0;i<n;i++){
-      const F=cdfv(sorted[i],edist,ep1,ep2);
-      D=Math.max(D,Math.abs((i+1)/n-F),Math.abs(i/n-F));
+      const F=cdfv(sorted[i],dist,ep1,ep2);
+      Dll=Math.max(Dll,Math.abs((i+1)/n-F),Math.abs(i/n-F));
     }
 
-    // Step 3: p-value using Lilliefors correction
-    // Dallal & Wilkinson (1986) approximation for normal; generalised for others.
-    // For normal: p ≈ exp(−7.01256·D²·(n+2.78019) + 2.99587·D·√(n+2.78019) − 0.122119 + 0.974598/√n + 1.67997/n)
-    // For other distributions a conservative KS-Lilliefors bound is used.
+    // Step 3: p-value
+    // Correction factors f so that D_LL_effective = Dll * f maps to KS distribution
+    // Stephens (1986): Lilliefors CV ≈ KS CV / f at alpha=0.05
+    const f_map={normal:1.533,lognormal:1.533,weibull:1.340,gamma:1.338,rayleigh:1.360};
+    const f=f_map[dist]||1.4;
+
     let p_ll;
-    if(dist==='normal'){
-      const a=D*D*(n+2.78019), b=D*Math.sqrt(n+2.78019);
+    if(dist==='normal'||dist==='lognormal'){
+      // Dallal & Wilkinson (1986) — most accurate for normal family
+      const a=Dll*Dll*(n+2.78019), b=Dll*Math.sqrt(n+2.78019);
       p_ll=Math.exp(-7.01256*a+2.99587*b-0.122119+0.974598/Math.sqrt(n)+1.67997/n);
     } else {
-      // General Lilliefors approximation (Steinskog et al. 2007 adaptation):
-      // Critical values are ~15% smaller than KS, so adjust D upward equivalently
-      const Dadj=D-0.01/n+0.85/Math.sqrt(n);  // bias correction
-      const sq=Math.sqrt(n),z=(sq+0.12+0.11/sq)*Dadj;
+      // Map D to KS scale via correction factor, then use KS p-value formula
+      const Deff=Dll*f;
+      const sq=Math.sqrt(n), z=(sq+0.12+0.11/sq)*Deff;
       let pk=0; for(let j=1;j<=100;j++) pk+=2*Math.pow(-1,j-1)*Math.exp(-2*j*j*z*z);
-      p_ll=Math.max(0,Math.min(1,pk))*0.85; // conservative Lilliefors correction
+      p_ll=pk;
     }
     p_ll=Math.max(0,Math.min(1,p_ll));
     res.push({name:'LL',p:p_ll,pass:p_ll>=al,
-      note:dist==='normal'?'(estimated μ,σ)':'(estimated params)'});
+      note:dist==='normal'?'(est. μ,σ)':dist==='lognormal'?'(est. μ_ln,σ_ln)':'(est. params)'});
   }
 
   return res;

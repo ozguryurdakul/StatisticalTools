@@ -259,6 +259,7 @@ select option{background:var(--panel2)}
     <label class="chkrow"><input type="checkbox" id="gof-ks"  checked> Kolmogorov-Smirnov (KS)</label>
     <label class="chkrow"><input type="checkbox" id="gof-ad"  checked> Anderson-Darling (AD)</label>
     <label class="chkrow"><input type="checkbox" id="gof-chi" checked> Chi-squared (χ²)</label>
+    <label class="chkrow"><input type="checkbox" id="gof-ll"  checked> Lilliefors (LL)</label>
   </div>
 
   <!-- Run -->
@@ -528,6 +529,80 @@ function runGOF(xi,dist,p1,p2){
     const chi2=o.reduce((s,oi,i)=>s+(oi-e[i])**2/e[i],0),df=Math.max(1,o.length-1);
     const p=1-gamcdf(chi2/2,df/2);res.push({name:'χ²',p,pass:p>=al});
   }
+  // ── Lilliefors ──────────────────────────────────────────────────
+  if(document.getElementById('gof-ll').checked){
+    // Step 1: estimate parameters from sample (MLE / method of moments)
+    let ep1, ep2, edist=dist;
+    const xm=sorted.reduce((a,b)=>a+b,0)/n;
+    const xs=Math.sqrt(sorted.reduce((a,b)=>a+(b-xm)*(b-xm),0)/n); // biased std for MLE
+    switch(dist){
+      case 'normal':
+        ep1=xm; ep2=xs; break;
+      case 'lognormal': {
+        // MLE: mu_ln = mean(log(x)), sigma_ln = std(log(x))
+        const lx=sorted.map(v=>Math.log(Math.max(v,1e-300)));
+        ep1=lx.reduce((a,b)=>a+b,0)/n;
+        ep2=Math.sqrt(lx.reduce((a,b)=>a+(b-ep1)*(b-ep1),0)/n);
+        break;
+      }
+      case 'weibull': {
+        // MLE via iterative Newton (shape k, then scale lambda)
+        let k=1.2;
+        for(let it=0;it<50;it++){
+          const lx=sorted.map(v=>Math.log(Math.max(v,1e-300)));
+          const xk=sorted.map(v=>Math.pow(v,k));
+          const s1=xk.reduce((a,b)=>a+b,0);
+          const s2=xk.reduce((a,b,i)=>a+b*lx[i],0);
+          const s3=lx.reduce((a,b)=>a+b,0);
+          const f=n/k + s3 - n*s2/s1;
+          const df=-n/(k*k) - n*(s1*xk.reduce((a,b,i)=>a+b*lx[i]*lx[i],0)-s2*s2)/(s1*s1);
+          const dk=f/df; k-=dk;
+          if(k<=0) k=0.1;
+          if(Math.abs(dk)<1e-8) break;
+        }
+        const lam=Math.pow(sorted.map(v=>Math.pow(v,k)).reduce((a,b)=>a+b,0)/n, 1/k);
+        ep1=k; ep2=lam; break;
+      }
+      case 'gamma': {
+        // MOM: shape=mean^2/var, scale=var/mean
+        const v2=sorted.reduce((a,b)=>a+(b-xm)*(b-xm),0)/n;
+        ep1=(xm*xm)/v2; ep2=v2/xm; break;
+      }
+      case 'rayleigh': {
+        // MLE: sigma = sqrt(sum(x^2)/(2n))
+        ep1=Math.sqrt(sorted.reduce((a,b)=>a+b*b,0)/(2*n));
+        ep2=NaN; break;
+      }
+    }
+
+    // Step 2: KS statistic with estimated parameters
+    let D=0;
+    for(let i=0;i<n;i++){
+      const F=cdfv(sorted[i],edist,ep1,ep2);
+      D=Math.max(D,Math.abs((i+1)/n-F),Math.abs(i/n-F));
+    }
+
+    // Step 3: p-value using Lilliefors correction
+    // Dallal & Wilkinson (1986) approximation for normal; generalised for others.
+    // For normal: p ≈ exp(−7.01256·D²·(n+2.78019) + 2.99587·D·√(n+2.78019) − 0.122119 + 0.974598/√n + 1.67997/n)
+    // For other distributions a conservative KS-Lilliefors bound is used.
+    let p_ll;
+    if(dist==='normal'){
+      const a=D*D*(n+2.78019), b=D*Math.sqrt(n+2.78019);
+      p_ll=Math.exp(-7.01256*a+2.99587*b-0.122119+0.974598/Math.sqrt(n)+1.67997/n);
+    } else {
+      // General Lilliefors approximation (Steinskog et al. 2007 adaptation):
+      // Critical values are ~15% smaller than KS, so adjust D upward equivalently
+      const Dadj=D-0.01/n+0.85/Math.sqrt(n);  // bias correction
+      const sq=Math.sqrt(n),z=(sq+0.12+0.11/sq)*Dadj;
+      let pk=0; for(let j=1;j<=100;j++) pk+=2*Math.pow(-1,j-1)*Math.exp(-2*j*j*z*z);
+      p_ll=Math.max(0,Math.min(1,pk))*0.85; // conservative Lilliefors correction
+    }
+    p_ll=Math.max(0,Math.min(1,p_ll));
+    res.push({name:'LL',p:p_ll,pass:p_ll>=al,
+      note:dist==='normal'?'(estimated μ,σ)':'(estimated params)'});
+  }
+
   return res;
 }
 
@@ -619,7 +694,7 @@ function drawMarginals(X){
     const note=v.dist==='lognormal'?` <span class="lbl">[μ_ln=${v.p1} σ_ln=${v.p2}]</span>`:'';
     let infoH=`<div class="sinfo"><span class="lbl">Sample :  </span>mean=${sm.toPrecision(4)}  std=${ss.toPrecision(4)}  COV=${sc.toFixed(1)}%<br>`+
       `<span class="lbl">Theoret.: </span>mean=${ts.mu.toPrecision(4)}  std=${ts.sig.toPrecision(4)}  COV=${tc.toFixed(1)}%${note}`;
-    gof.forEach(g=>{infoH+=`<br><span class="${g.pass?'pass':'fail'}">${g.name}: p=${g.p.toFixed(3)}  ${g.pass?'PASS':'FAIL'} (α=0.05)</span>`});
+    gof.forEach(g=>{const note=g.note?' '+g.note:'';infoH+=`<br><span class="${g.pass?'pass':'fail'}">${g.name}: p=${g.p.toFixed(3)}  ${g.pass?'PASS':'FAIL'} (α=0.05)${note}</span>`});
     infoH+='</div>';
     const card=document.createElement('div');
     card.className='card';

@@ -369,13 +369,19 @@ let _lastRtgt = null;
 let _lastRfin = null;
 let chartList = [];
 
-const DISTS = ['normal','lognormal','weibull','gamma','rayleigh'];
+const DISTS = ['normal','lognormal','weibull','gamma','rayleigh',
+               'exponential','uniform','gumbel','frechet','loglogistic'];
 const DINFO = {
-  normal:    {p1:'Mean  (μ)',        p2:'Std dev  (σ)',      hint:'Col 3 = Mean (any real)  |  Col 4 = Std dev > 0'},
-  lognormal: {p1:'μ_ln (log-space)', p2:'σ_ln (log-space)',  hint:'Col 3 = μ_ln  |  Col 4 = σ_ln  (both > 0) — real-space moments shown in info panel'},
-  weibull:   {p1:'Shape  (k)',       p2:'Scale  (λ)',        hint:'Col 3 = Shape k > 0  |  Col 4 = Scale λ > 0'},
-  gamma:     {p1:'Shape  (α)',       p2:'Scale  (β)',        hint:'Col 3 = Shape α > 0  |  Col 4 = Scale β > 0'},
-  rayleigh:  {p1:'Scale  (σ)',       p2:'— (unused)',        hint:'Col 3 = Scale σ > 0  |  Col 4 = unused (single-parameter)'},
+  normal:      {p1:'Mean  (μ)',        p2:'Std dev  (σ)',       hint:'Mean (any real) | Std dev > 0'},
+  lognormal:   {p1:'μ_ln (log-space)', p2:'σ_ln (log-space)',   hint:'μ_ln | σ_ln (both > 0) — real-space moments shown in panel'},
+  weibull:     {p1:'Shape  (k)',       p2:'Scale  (λ)',         hint:'Shape k > 0 | Scale λ > 0'},
+  gamma:       {p1:'Shape  (α)',       p2:'Scale  (β)',         hint:'Shape α > 0 | Scale β > 0'},
+  rayleigh:    {p1:'Scale  (σ)',       p2:'— (unused)',         hint:'Scale σ > 0 | Col 4 unused (single-parameter)'},
+  exponential: {p1:'Rate  (λ=1/mean)',p2:'— (unused)',          hint:'Rate λ = 1/mean > 0 | Col 4 unused (single-parameter)'},
+  uniform:     {p1:'Min  (a)',         p2:'Max  (b)',            hint:'Min a (any real) | Max b > a'},
+  gumbel:      {p1:'Location  (μ)',    p2:'Scale  (β)',         hint:'Location μ (any real) | Scale β > 0  [Type I Max]'},
+  frechet:     {p1:'Shape  (α)',       p2:'Scale  (s)',         hint:'Shape α > 0 | Scale s > 0  [Type II Max, x > 0]'},
+  loglogistic: {p1:'Scale  (α)',       p2:'Shape  (β)',         hint:'Scale α > 0 | Shape β > 0'},
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -431,34 +437,86 @@ function raylinv(p,s){return s*Math.sqrt(-2*Math.log(1-p))}
 function raylpdf(x,s){if(x<=0)return 0;return(x/(s*s))*Math.exp(-(x*x)/(2*s*s))}
 function raylcdf(x,s){if(x<=0)return 0;return 1-Math.exp(-(x*x)/(2*s*s))}
 
+// ── Exponential ──────────────────────────────────────────────────
+function expinv(p,lam){return -Math.log(1-p)/lam}
+function exppdf(x,lam){if(x<0)return 0;return lam*Math.exp(-lam*x)}
+function expcdf(x,lam){if(x<0)return 0;return 1-Math.exp(-lam*x)}
+
+// ── Uniform ───────────────────────────────────────────────────────
+function uninv(p,a,b){return a+p*(b-a)}
+function unipdf(x,a,b){if(x<a||x>b)return 0;return 1/(b-a)}
+function unicdf(x,a,b){if(x<=a)return 0;if(x>=b)return 1;return(x-a)/(b-a)}
+
+// ── Gumbel (Type I Max) ───────────────────────────────────────────
+// CDF: exp(-exp(-(x-mu)/beta)),  mean=mu+0.5772*beta,  std=pi*beta/sqrt(6)
+function guminv(p,mu,beta){return mu-beta*Math.log(-Math.log(p))}
+function gumpdf(x,mu,beta){const z=(x-mu)/beta;return Math.exp(-z-Math.exp(-z))/beta}
+function gumcdf(x,mu,beta){return Math.exp(-Math.exp(-(x-mu)/beta))}
+
+// ── Fréchet (Type II Max) ─────────────────────────────────────────
+// CDF: exp(-(s/x)^alpha), x>0,  mean=s*Gamma(1-1/a) for a>1
+function freinv(p,alpha,s){return s*Math.pow(-Math.log(p),-1/alpha)}
+function frepdf(x,alpha,s){if(x<=0)return 0;return(alpha/s)*Math.pow(s/x,alpha+1)*Math.exp(-Math.pow(s/x,alpha))}
+function frecdf(x,alpha,s){if(x<=0)return 0;return Math.exp(-Math.pow(s/x,alpha))}
+
+// ── Log-logistic ──────────────────────────────────────────────────
+// CDF: 1/(1+(alpha/x)^beta),  median=alpha
+function llinv(p,alpha,beta){return alpha*Math.pow(p/(1-p),1/beta)}
+function llpdf(x,alpha,beta){if(x<=0)return 0;const r=Math.pow(x/alpha,beta);return(beta/alpha)*r/((1+r)*(1+r))}
+function llcdf(x,alpha,beta){if(x<=0)return 0;return 1/(1+Math.pow(alpha/x,beta))}
+
 function icdf(p,dist,p1,p2){
   p=Math.max(1e-10,Math.min(1-1e-10,p));
-  if(dist==='normal')    return p1+p2*norminv(p);
-  if(dist==='lognormal') return logninv(p,p1,p2);
-  if(dist==='weibull')   return wblinv(p,p2,p1);
-  if(dist==='gamma')     return gaminv2(p,p1,p2);
-  if(dist==='rayleigh')  return raylinv(p,p1);
+  if(dist==='normal')      return p1+p2*norminv(p);
+  if(dist==='lognormal')   return logninv(p,p1,p2);
+  if(dist==='weibull')     return wblinv(p,p2,p1);
+  if(dist==='gamma')       return gaminv2(p,p1,p2);
+  if(dist==='rayleigh')    return raylinv(p,p1);
+  if(dist==='exponential') return expinv(p,p1);
+  if(dist==='uniform')     return uninv(p,p1,p2);
+  if(dist==='gumbel')      return guminv(p,p1,p2);
+  if(dist==='frechet')     return freinv(p,p1,p2);
+  if(dist==='loglogistic') return llinv(p,p1,p2);
 }
 function pdfv(x,dist,p1,p2){
-  if(dist==='normal')    return normpdf((x-p1)/p2)/p2;
-  if(dist==='lognormal') return lognpdf(x,p1,p2);
-  if(dist==='weibull')   return wblpdf(x,p2,p1);
-  if(dist==='gamma')     return gampdf2(x,p1,p2);
-  if(dist==='rayleigh')  return raylpdf(x,p1);
+  if(dist==='normal')      return normpdf((x-p1)/p2)/p2;
+  if(dist==='lognormal')   return lognpdf(x,p1,p2);
+  if(dist==='weibull')     return wblpdf(x,p2,p1);
+  if(dist==='gamma')       return gampdf2(x,p1,p2);
+  if(dist==='rayleigh')    return raylpdf(x,p1);
+  if(dist==='exponential') return exppdf(x,p1);
+  if(dist==='uniform')     return unipdf(x,p1,p2);
+  if(dist==='gumbel')      return gumpdf(x,p1,p2);
+  if(dist==='frechet')     return frepdf(x,p1,p2);
+  if(dist==='loglogistic') return llpdf(x,p1,p2);
 }
 function cdfv(x,dist,p1,p2){
-  if(dist==='normal')    return normcdf((x-p1)/p2);
-  if(dist==='lognormal') return logncdf(x,p1,p2);
-  if(dist==='weibull')   return wblcdf(x,p2,p1);
-  if(dist==='gamma')     return gamcdf2(x,p1,p2);
-  if(dist==='rayleigh')  return raylcdf(x,p1);
+  if(dist==='normal')      return normcdf((x-p1)/p2);
+  if(dist==='lognormal')   return logncdf(x,p1,p2);
+  if(dist==='weibull')     return wblcdf(x,p2,p1);
+  if(dist==='gamma')       return gamcdf2(x,p1,p2);
+  if(dist==='rayleigh')    return raylcdf(x,p1);
+  if(dist==='exponential') return expcdf(x,p1);
+  if(dist==='uniform')     return unicdf(x,p1,p2);
+  if(dist==='gumbel')      return gumcdf(x,p1,p2);
+  if(dist==='frechet')     return frecdf(x,p1,p2);
+  if(dist==='loglogistic') return llcdf(x,p1,p2);
 }
 function thStats(dist,p1,p2){
-  if(dist==='normal')    return{mu:p1,sig:p2};
-  if(dist==='lognormal'){const mu=Math.exp(p1+p2**2/2);return{mu,sig:Math.sqrt((Math.exp(p2**2)-1)*Math.exp(2*p1+p2**2))}}
-  if(dist==='weibull')  {const mu=p2*gammaFn(1+1/p1);return{mu,sig:p2*Math.sqrt(gammaFn(1+2/p1)-gammaFn(1+1/p1)**2)}}
-  if(dist==='gamma')     return{mu:p1*p2,sig:Math.sqrt(p1)*p2};
-  if(dist==='rayleigh')  return{mu:p1*Math.sqrt(Math.PI/2),sig:p1*Math.sqrt((4-Math.PI)/2)};
+  if(dist==='normal')      return{mu:p1,sig:p2};
+  if(dist==='lognormal')  {const mu=Math.exp(p1+p2*p2/2);return{mu,sig:Math.sqrt((Math.exp(p2*p2)-1)*Math.exp(2*p1+p2*p2))}}
+  if(dist==='weibull')    {const mu=p2*gammaFn(1+1/p1);return{mu,sig:p2*Math.sqrt(gammaFn(1+2/p1)-gammaFn(1+1/p1)*gammaFn(1+1/p1))}}
+  if(dist==='gamma')       return{mu:p1*p2,sig:Math.sqrt(p1)*p2};
+  if(dist==='rayleigh')    return{mu:p1*Math.sqrt(Math.PI/2),sig:p1*Math.sqrt((4-Math.PI)/2)};
+  if(dist==='exponential') return{mu:1/p1,sig:1/p1};
+  if(dist==='uniform')     return{mu:(p1+p2)/2,sig:(p2-p1)/Math.sqrt(12)};
+  if(dist==='gumbel')      return{mu:p1+0.5772*p2,sig:Math.PI*p2/Math.sqrt(6)};
+  if(dist==='frechet')    {const mu=p1>1?p2*gammaFn(1-1/p1):Infinity;
+                           const sig=p1>2?p2*Math.sqrt(gammaFn(1-2/p1)-gammaFn(1-1/p1)*gammaFn(1-1/p1)):Infinity;
+                           return{mu,sig}}
+  if(dist==='loglogistic'){const mu=p2>1?Math.PI*p1/(p2*Math.sin(Math.PI/p2)):Infinity;
+                           const sig=p2>2?p1*Math.sqrt(Math.PI*(2/p2)/Math.sin(2*Math.PI/p2)-Math.PI*Math.PI/(p2*p2)/(Math.sin(Math.PI/p2)*Math.sin(Math.PI/p2))):Infinity;
+                           return{mu,sig}}
 }
 
 function chol(M){
@@ -584,6 +642,33 @@ function runGOF(xi,dist,p1,p2){
       case 'rayleigh':
         ep1=Math.sqrt(sorted.reduce((a,b)=>a+b*b,0)/(2*n));
         ep2=NaN; break;
+      case 'exponential':
+        // MLE: lambda = 1/mean
+        ep1=1/xm; ep2=NaN; break;
+      case 'uniform':
+        // MOM: a=min, b=max
+        ep1=sorted[0]; ep2=sorted[n-1]; break;
+      case 'gumbel': {
+        // MOM: beta=s*sqrt(6)/pi, mu=mean-0.5772*beta
+        const sg=Math.sqrt(sorted.reduce((a,b)=>a+(b-xm)*(b-xm),0)/(n-1));
+        ep2=sg*Math.sqrt(6)/Math.PI; ep1=xm-0.5772*ep2; break;
+      }
+      case 'frechet': {
+        // MOM on log-moments; scale = sample median
+        const lx2=sorted.map(v=>Math.log(Math.max(v,1e-300)));
+        const mlx=lx2.reduce((a,b)=>a+b,0)/n;
+        const slx=Math.sqrt(lx2.reduce((a,b)=>a+(b-mlx)*(b-mlx),0)/n);
+        // shape: pi/(sqrt(6)*slx), scale: median
+        ep1=Math.PI/(Math.sqrt(6)*slx);
+        ep2=sorted[Math.floor(n/2)]; break;
+      }
+      case 'loglogistic': {
+        // MOM on log-moments: beta=pi/(sqrt(3)*s_log), alpha=exp(mu_log)
+        const lx3=sorted.map(v=>Math.log(Math.max(v,1e-300)));
+        const mlx3=lx3.reduce((a,b)=>a+b,0)/n;
+        const slx3=Math.sqrt(lx3.reduce((a,b)=>a+(b-mlx3)*(b-mlx3),0)/n);
+        ep2=Math.PI/(Math.sqrt(3)*slx3); ep1=Math.exp(mlx3); break;
+      }
     }
 
     // Step 2: KS statistic D with estimated parameters
@@ -596,7 +681,7 @@ function runGOF(xi,dist,p1,p2){
     // Step 3: p-value
     // Correction factors f so that D_LL_effective = Dll * f maps to KS distribution
     // Stephens (1986): Lilliefors CV ≈ KS CV / f at alpha=0.05
-    const f_map={normal:1.533,lognormal:1.533,weibull:1.340,gamma:1.338,rayleigh:1.360};
+    const f_map={normal:1.533,lognormal:1.533,weibull:1.340,gamma:1.338,rayleigh:1.360,exponential:1.260,uniform:1.300,gumbel:1.320,frechet:1.300,loglogistic:1.310};
     const f=f_map[dist]||1.4;
 
     let p_ll;
@@ -793,7 +878,7 @@ function renderVars(){
         </select>
       </td>
       <td><input type="number" value="${isNaN(v.p1)?'':v.p1}" style="width:62px" oninput="vars[${i}].p1=parseFloat(this.value)||0"></td>
-      <td><input type="number" value="${isNaN(v.p2)?'':v.p2}" style="width:62px" ${v.dist==='rayleigh'?'disabled placeholder="N/A"':''} oninput="vars[${i}].p2=parseFloat(this.value)"></td>
+      <td><input type="number" value="${isNaN(v.p2)?'':v.p2}" style="width:62px" ${['rayleigh','exponential'].includes(v.dist)?'disabled placeholder="N/A"':''} oninput="vars[${i}].p2=parseFloat(this.value)"></td>
       <td><button class="del" onclick="delVar(${i})">×</button></td>
     `;
     tb.appendChild(tr);
@@ -814,7 +899,7 @@ function updateHint(i){
 }
 
 function addVar(){
-  vars.push({name:`x${vars.length+1}`,dist:'normal',p1:1,p2:1});
+  const newDist='normal'; vars.push({name:`x${vars.length+1}`,dist:newDist,p1:1,p2:1});
   // expand R
   const d=R.length;
   R=R.map(row=>[...row,0]);
@@ -892,9 +977,11 @@ function run(){
   for(let i=0;i<vars.length;i++){
     const v=vars[i];
     if(!v.name.trim()){setStatus(`Variable ${i+1} has no name.`,'err');return}
-    if(v.dist==='normal'   &&v.p2<=0){setStatus(`Std dev for "${v.name}" must be > 0.`,'err');return}
-    if(v.dist!=='normal'   &&v.p1<=0){setStatus(`Param 1 for "${v.name}" must be > 0.`,'err');return}
-    if(!['normal','rayleigh'].includes(v.dist)&&isNaN(v.p2)&&v.p2<=0){setStatus(`Param 2 for "${v.name}" missing.`,'err');return}
+    const singleParam=['rayleigh','exponential'];
+    if(v.dist==='normal'&&v.p2<=0){setStatus(`Std dev for "${v.name}" must be > 0.`,'err');return}
+    if(v.dist==='uniform'&&v.p2<=v.p1){setStatus(`Max b must be > Min a for "${v.name}".`,'err');return}
+    if(!['normal','gumbel','uniform'].includes(v.dist)&&v.p1<=0){setStatus(`Param 1 for "${v.name}" must be > 0.`,'err');return}
+    if(!singleParam.includes(v.dist)&&!['uniform','gumbel'].includes(v.dist)&&v.p2<=0){setStatus(`Param 2 for "${v.name}" must be > 0.`,'err');return}
   }
   const maxIter=+document.getElementById('sa-iter').value;
   const T0=+document.getElementById('sa-t0').value;

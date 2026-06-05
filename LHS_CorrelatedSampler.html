@@ -373,15 +373,15 @@ const DISTS = ['normal','lognormal','weibull','gamma','rayleigh',
                'exponential','uniform','gumbel','frechet','loglogistic'];
 const DINFO = {
   normal:      {p1:'Mean  (μ)',        p2:'Std dev  (σ)',       hint:'Mean (any real) | Std dev > 0'},
-  lognormal:   {p1:'μ_ln (log-space)', p2:'σ_ln (log-space)',   hint:'μ_ln | σ_ln (both > 0) — real-space moments shown in panel'},
-  weibull:     {p1:'Shape  (k)',       p2:'Scale  (λ)',         hint:'Shape k > 0 | Scale λ > 0'},
-  gamma:       {p1:'Shape  (α)',       p2:'Scale  (β)',         hint:'Shape α > 0 | Scale β > 0'},
+  lognormal:   {p1:'μ_ln (log-space)', p2:'σ_ln (log-space)',   hint:'μ_ln > 0 | 0 < σ_ln ≤ 5  (σ_ln > 2 → extreme right skew; σ_ln > 5 blocked) — real-space moments shown in panel'},
+  weibull:     {p1:'Shape  (k)',       p2:'Scale  (λ)',         hint:'Shape k ≥ 0.1  (k < 0.5: J-shaped heavy tail; k = 1: exponential; k > 1: bell-shaped) | Scale λ > 0'},
+  gamma:       {p1:'Shape  (α)',       p2:'Scale  (β)',         hint:'Shape α ≥ 0.1  (α < 1: J-shaped; α = 1: exponential; α > 2: bell-shaped) | Scale β > 0'},
   rayleigh:    {p1:'Scale  (σ)',       p2:'— (unused)',         hint:'Scale σ > 0 | Col 4 unused (single-parameter)'},
   exponential: {p1:'Rate  (λ=1/mean)',p2:'— (unused)',          hint:'Rate λ = 1/mean > 0 | Col 4 unused (single-parameter)'},
   uniform:     {p1:'Min  (a)',         p2:'Max  (b)',            hint:'Min a (any real) | Max b > a'},
   gumbel:      {p1:'Location  (μ)',    p2:'Scale  (β)',         hint:'Location μ (any real) | Scale β > 0  [Type I Max]'},
-  frechet:     {p1:'Shape  (α)',       p2:'Scale  (s)',         hint:'Shape α > 0 | Scale s > 0  [Type II Max, x > 0]'},
-  loglogistic: {p1:'Scale  (α)',       p2:'Shape  (β)',         hint:'Scale α > 0 | Shape β > 0'},
+  frechet:     {p1:'Shape  (α)',       p2:'Scale  (s)',         hint:'Shape α > 2 (mean finite for α>1; variance finite for α>2) | Scale s > 0  [Type II Max, x > 0]'},
+  loglogistic: {p1:'Scale  (α)',       p2:'Shape  (β)',         hint:'Scale α > 0 | Shape β > 2 (mean finite for β>1; variance finite for β>2). Typical: 2–10'},
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -982,6 +982,35 @@ function run(){
     if(v.dist==='uniform'&&v.p2<=v.p1){setStatus(`Max b must be > Min a for "${v.name}".`,'err');return}
     if(!['normal','gumbel','uniform'].includes(v.dist)&&v.p1<=0){setStatus(`Param 1 for "${v.name}" must be > 0.`,'err');return}
     if(!singleParam.includes(v.dist)&&!['uniform','gumbel'].includes(v.dist)&&v.p2<=0){setStatus(`Param 2 for "${v.name}" must be > 0.`,'err');return}
+    // ── Distribution-specific parameter bounds ──────────────────────────
+    // Fréchet: mean finite only for α>1; variance finite only for α>2.
+    if(v.dist==='frechet'&&v.p1<=2){setStatus(`Fréchet shape α for "${v.name}" must be > 2 (mean infinite for α≤1; variance infinite for α≤2). Recommended: α > 2.`,'err');return}
+    // Log-logistic: mean finite only for β>1; variance finite only for β>2.
+    if(v.dist==='loglogistic'&&v.p2<=2){setStatus(`Log-logistic shape β for "${v.name}" must be > 2 (mean infinite for β≤1; variance infinite for β≤2). Typical: 2–10.`,'err');return}
+    // Weibull: hard stop at k<0.1 (degenerate); soft warning at k<0.5 (J-shape)
+    if(v.dist==='weibull'&&v.p1<0.1){setStatus(`Weibull shape k for "${v.name}" must be ≥ 0.1 (degenerate below this).`,'err');return}
+    // Gamma: hard stop at α<0.1 (degenerate); soft warning at α<0.5 (J-shape)
+    if(v.dist==='gamma'&&v.p1<0.1){setStatus(`Gamma shape α for "${v.name}" must be ≥ 0.1 (degenerate below this).`,'err');return}
+    // Lognormal: hard stop at σ_ln>5 (produces astronomically large samples)
+    if(v.dist==='lognormal'&&v.p2>5){setStatus(`Lognormal σ_ln for "${v.name}" should be ≤ 5 (σ_ln=${v.p2.toFixed(2)} produces samples spanning ${Math.round(Math.exp(v.p2*4))} orders of magnitude).`,'err');return}
+  }
+  // ── Soft warnings (non-blocking: shown in status but run continues) ──
+  const softWarnings=[];
+  for(let i=0;i<vars.length;i++){
+    const v=vars[i];
+    if(v.dist==='lognormal'&&v.p2>2)
+      softWarnings.push(`"${v.name}": σ_ln=${v.p2} is large — expect heavy right skew`);
+    if(v.dist==='weibull'&&v.p1<0.5)
+      softWarnings.push(`"${v.name}": Weibull k=${v.p1} < 0.5 — J-shaped (monotone decreasing) PDF`);
+    if(v.dist==='gamma'&&v.p1<0.5)
+      softWarnings.push(`"${v.name}": Gamma α=${v.p1} < 0.5 — J-shaped PDF, heavy right tail`);
+    if(v.dist==='frechet'&&v.p1<=3)
+      softWarnings.push(`"${v.name}": Fréchet α=${v.p1} — heavy tail, high COV expected`);
+    if(v.dist==='exponential')
+      softWarnings.push(`"${v.name}": Exponential — single-parameter, mean=std=1/λ, high COV=100%`);
+  }
+  if(softWarnings.length>0){
+    setStatus('⚠ Warning: '+softWarnings.join(' | ')+' — Running anyway…','running');
   }
   const maxIter=+document.getElementById('sa-iter').value;
   const T0=+document.getElementById('sa-t0').value;

@@ -229,7 +229,7 @@ select option{background:var(--panel2)}
   </div>
 
   <!-- Correlation matrix -->
-  <div class="sec">
+  <div class="sec" id="corr-section">
     <div class="sec-title">Target Correlation Matrix R</div>
     <div class="hint" style="margin-bottom:7px">Diagonal = 1 · Must be symmetric positive definite</div>
     <div style="overflow:auto;max-height:220px">
@@ -710,6 +710,11 @@ function runGOF(xi,dist,p1,p2){
 function runLHS(n,vs,Rtgt,maxIter,T0,Tmin,alpha){
   const d=vs.length;
   const U=lhsdesign(n,d);
+  // ── Single variable: skip Cholesky and SA entirely ────────────────────
+  if(d===1){
+    const X=U.map(row=>[icdf(row[0],vs[0].dist,vs[0].p1,vs[0].p2)]);
+    return{X, Rfin:[[1]], cost:0};
+  }
   const Z=U.map(row=>row.map(u=>norminv(u)));
   const L=chol(Rtgt);
   let Zc=Z.map(row=>Array.from({length:d},(_,j)=>{let s=0;for(let k=0;k<=j;k++)s+=L[j][k]*row[k];return s}));
@@ -910,7 +915,7 @@ function addVar(){
 }
 
 function delVar(i){
-  if(vars.length<=2){setStatus('Need at least 2 variables.','err');return}
+  if(vars.length<=1){setStatus('Need at least 1 variable.','err');return}
   vars.splice(i,1);
   R=R.filter((_,r)=>r!==i).map(row=>row.filter((_,c)=>c!==i));
   renderVars();renderCorr();
@@ -921,6 +926,9 @@ function delVar(i){
 // ═══════════════════════════════════════════════════════════════════
 function renderCorr(){
   const d=vars.length,names=vars.map(v=>v.name);
+  // Hide correlation section entirely when only 1 variable
+  const corrSec=document.getElementById('corr-section');
+  if(corrSec) corrSec.style.display=d<=1?'none':'block';
   // ensure R is d×d
   while(R.length<d){const nd=R.length;R=R.map(row=>[...row,0]);R.push(Array(nd+1).fill(0));for(let i=0;i<=nd;i++)R[i][i]=1}
   if(R.length>d){R=R.slice(0,d).map(r=>r.slice(0,d))}
@@ -939,6 +947,7 @@ function renderCorr(){
 
 function valCorr(){
   const el=document.getElementById('cstatus');
+  if(R.length<=1){el.className='cstatus ok';el.textContent='✔  Single variable — no correlation needed';return true}
   for(let i=0;i<R.length;i++)for(let j=0;j<R.length;j++)if(Math.abs(R[i][j]-R[j][i])>1e-9){el.className='cstatus bad';el.textContent='⚠ Not symmetric — use Auto-symmetrise';return false}
   if(!isPD(R)){el.className='cstatus bad';el.textContent='❌ Not positive definite — adjust values';return false}
   el.className='cstatus ok';el.textContent='✔  Symmetric positive definite — OK';return true;
@@ -1037,7 +1046,7 @@ function run(){
       drawSampleTable(X);
       document.getElementById('progbar').style.width='100%';
       setTimeout(()=>document.getElementById('progwrap').style.display='none',500);
-      setStatus(`Done — Frobenius error: ${cost.toFixed(5)}  (n=${n}, d=${vars.length})  ✔`,'ok');
+      setStatus(vars.length===1?`Done — ${n} samples generated for 1 variable  ✔`:`Done — Frobenius error: ${cost.toFixed(5)}  (n=${n}, d=${vars.length})  ✔`,'ok');
     }catch(e){setStatus('Error: '+e.message,'err');document.getElementById('progwrap').style.display='none'}
   },40);
 }
@@ -1144,7 +1153,7 @@ function setStatus(msg,state){
 // ═══════════════════════════════════════════════════════════════════
 document.getElementById('btn-add').addEventListener('click', addVar);
 document.getElementById('btn-rem').addEventListener('click', ()=>{
-  if(vars.length<=2){setStatus('Need at least 2 variables.','err');return}
+  if(vars.length<=1){setStatus('Need at least 1 variable.','err');return}
   delVar(vars.length-1);
 });
 document.getElementById('btn-run').addEventListener('click', run);

@@ -966,7 +966,26 @@ function annotationPlugin(mFit,sFit,yAxisID,invLine){
 function calcInverse(){
   if(!fitResult){document.getElementById('invResult').textContent='Run analysis first';return}
   const p=parseFloat(document.getElementById('invProb').value);
-  if(isNaN(p)||p<=0||p>=1){document.getElementById('invResult').textContent='Invalid p';return}
+  if(isNaN(p)||p<0||p>=1){document.getElementById('invResult').textContent='Invalid p';return}
+  // p=0 means clear the inverse line from all charts
+  if(p===0){
+    document.getElementById('invResult').textContent='—';
+    if(charts.cdfChart){
+      charts.cdfChart.data.datasets=charts.cdfChart.data.datasets.filter(d=>!d.label.startsWith('x(p'));
+      charts.cdfChart.update();
+    }
+    if(fitResult){
+      const {clean,fit,xmin,xmax,xlabel,dist,binMeth}=fitResult;
+      const xlo=Math.max(1e-300,fit.icdf(0.001)||xmin);
+      const xhi=fit.icdf(0.999)||xmax;
+      const xs=linspace(Math.max(xmin,xlo),Math.min(xmax,xhi),500);
+      const ylimRaw=parseFloat(document.getElementById('ylimMax').value);
+      const ylimMax=isFinite(ylimRaw)&&ylimRaw>0?ylimRaw:null;
+      drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax,binMeth);
+      drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,null,null,null,null,ylimMax,binMeth);
+    }
+    return;
+  }
   const val=fitResult.fit.icdf(p);
   document.getElementById('invResult').textContent=`x(p=${p}) = ${val.toFixed(5)}`;
   const invLine={val,p};

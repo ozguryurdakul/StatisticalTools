@@ -196,6 +196,17 @@ select option{background:var(--panel2)}
       <label style="margin:0;font-size:11px;color:var(--txt3)">&nbsp;values loaded</label>
     </div>
     <div style="margin-bottom:7px">
+      <label>Outlier detection method</label>
+      <select id="outlierMethod">
+        <option value="none">None (keep all)</option>
+        <option value="mean3s">Mean ± 3σ  (isoutlier 'mean')</option>
+        <option value="median">Median / MAD  (isoutlier 'median')</option>
+        <option value="iqr">IQR  (1.5 × IQR rule)</option>
+        <option value="grubbs">Grubbs test  (α = 0.05)</option>
+        <option value="gesd">GESD / Rosner  (α = 0.05)</option>
+      </select>
+    </div>
+    <div style="margin-bottom:7px">
       <label>Distribution type</label>
       <select id="distType" onchange="onDistChange()">
         <option value="lognormal">LogNormal</option>
@@ -210,17 +221,6 @@ select option{background:var(--panel2)}
         <option value="loglogistic">Log-logistic</option>
       </select>
       <div class="hint" id="distHint">LogNormal: μ_ln (log-space mean), σ_ln (log-space std)</div>
-    </div>
-    <div style="margin-bottom:7px">
-      <label>Outlier detection method</label>
-      <select id="outlierMethod">
-        <option value="none">None (keep all)</option>
-        <option value="mean3s">Mean ± 3σ  (isoutlier 'mean')</option>
-        <option value="median">Median / MAD  (isoutlier 'median')</option>
-        <option value="iqr">IQR  (1.5 × IQR rule)</option>
-        <option value="grubbs">Grubbs test  (α = 0.05)</option>
-        <option value="gesd">GESD / Rosner  (α = 0.05)</option>
-      </select>
     </div>
     <div style="margin-bottom:7px">
       <label>Histogram bin method</label>

@@ -222,6 +222,17 @@ select option{background:var(--panel2)}
         <option value="gesd">GESD / Rosner  (α = 0.05)</option>
       </select>
     </div>
+    <div style="margin-bottom:7px">
+      <label>Histogram bin method</label>
+      <select id="binMethod">
+        <option value="fd" selected>Freedman-Diaconis  (default)</option>
+        <option value="sqrt">Square root  (√n)</option>
+        <option value="sturges">Sturges  (⌈log₂n⌉ + 1)</option>
+        <option value="rice">Rice  (⌈2n^(1/3)⌉)</option>
+        <option value="scott">Scott  (3.5σ·n^(-1/3))</option>
+        <option value="auto">Auto  (max of Sturges & FD)</option>
+      </select>
+    </div>
     <div class="row2">
       <div><label>X min (plot)</label><input type="number" id="xlimMin" value="0" step="any"></div>
       <div><label>X max (plot)</label><input type="number" id="xlimMax" value="100" step="any"></div>
@@ -594,12 +605,37 @@ function detectOutliers(arr, method){
 function tInv(p,df){const z=norminv(1-p/2);return z+(z*z*z+z)/(4*df)+(5*z*z*z*z*z+16*z*z*z+3*z)/(96*df*df)}
 
 /* ═══════════════════════════════ HISTOGRAM ═══════════════════════════ */
-function fdBins(arr,xlo,xhi){
-  const s=[...arr].sort((a,b)=>a-b),n=arr.length;
-  const q1=s[Math.floor(n*0.25)],q3=s[Math.floor(n*0.75)],iqr=q3-q1;
-  const h=iqr>0?2*iqr*Math.pow(n,-1/3):(xhi-xlo)/Math.max(5,Math.ceil(Math.sqrt(n)));
-  const nb=Math.max(5,Math.min(80,Math.ceil((xhi-xlo)/h)));
-  const edges=[];for(let i=0;i<=nb;i++)edges.push(xlo+i*(xhi-xlo)/nb);
+function calcBins(arr, xlo, xhi, method){
+  const n=arr.length;
+  const s=[...arr].sort((a,b)=>a-b);
+  const range=xhi-xlo;
+  let nb;
+  if(method==='fd'||method==='auto'){
+    const q1=s[Math.floor(n*0.25)],q3=s[Math.floor(n*0.75)],iqr=q3-q1;
+    const hfd=iqr>0?2*iqr*Math.pow(n,-1/3):range/Math.max(5,Math.ceil(Math.sqrt(n)));
+    const nbFD=Math.ceil(range/hfd);
+    if(method==='auto'){
+      const nbSturges=Math.ceil(Math.log2(n))+1;
+      nb=Math.max(nbFD,nbSturges);
+    } else {
+      nb=nbFD;
+    }
+  } else if(method==='sqrt'){
+    nb=Math.ceil(Math.sqrt(n));
+  } else if(method==='sturges'){
+    nb=Math.ceil(Math.log2(n))+1;
+  } else if(method==='rice'){
+    nb=Math.ceil(2*Math.pow(n,1/3));
+  } else if(method==='scott'){
+    const sigma=arrStd(arr);
+    const hScott=sigma>0?3.5*sigma*Math.pow(n,-1/3):range/Math.ceil(Math.sqrt(n));
+    nb=Math.ceil(range/hScott);
+  } else {
+    nb=Math.ceil(Math.sqrt(n)); // fallback
+  }
+  nb=Math.max(3,Math.min(100,nb));
+  const edges=[];
+  for(let i=0;i<=nb;i++) edges.push(xlo+i*range/nb);
   return edges;
 }
 function histPDF(arr,edges){
@@ -698,6 +734,7 @@ function runAnalysis(){
   if(!rawData||rawData.length<5){alert('Load a data file first.');return}
   const dist     = document.getElementById('distType').value;
   const outMeth  = document.getElementById('outlierMethod').value;
+  const binMeth  = document.getElementById('binMethod').value;
   const xmin     = parseFloat(document.getElementById('xlimMin').value);
   const xmax     = parseFloat(document.getElementById('xlimMax').value);
   const xlabel   = document.getElementById('xlabel').value||'x';
@@ -711,7 +748,7 @@ function runAnalysis(){
 
   // Fit
   const fit = fitDist(clean, dist);
-  fitResult = {fit, clean, dist, xmin, xmax, xlabel};
+  fitResult = {fit, clean, dist, xmin, xmax, xlabel, binMeth};
 
   // Stats (go to log only now)
   document.getElementById('distBadge').textContent=dist.charAt(0).toUpperCase()+dist.slice(1);
@@ -738,9 +775,9 @@ function runAnalysis(){
   const ylimRaw = parseFloat(document.getElementById('ylimMax').value);
   const ylimMax = isFinite(ylimRaw) && ylimRaw > 0 ? ylimRaw : null;
 
-  drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax);
+  drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax,binMeth);
   drawCDF(clean,fit,xs,xmin,xmax,xlabel,dist);
-  drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,ksR,chiR,lilR,adR,ylimMax);
+  drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,ksR,chiR,lilR,adR,ylimMax,binMeth);
 
   // Log
   document.getElementById('logBox').textContent=buildLog(rawData.length,clean.length,outlierVals.length,outMeth,clean,fit,dist,ksR,chiR,lilR,adR);
@@ -765,11 +802,11 @@ const CHT = {
 };
 
 /* ═══════════════════════════════ DRAW PDF ════════════════════════════ */
-function drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax){
+function drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax,binMeth){
   document.getElementById('pdfPH').style.display='none';
   const canvas=document.getElementById('pdfChart');canvas.style.display='block';
   if(charts.pdfChart){charts.pdfChart.destroy();charts.pdfChart=null;}
-  const edges=fdBins(clean,xmin,xmax);
+  const edges=calcBins(clean,xmin,xmax,binMeth||'fd');
   const hist=histPDF(clean,edges);
   const mFit=fit.meanFit, sFit=isFinite(fit.stdFit)?fit.stdFit:0;
   const yOpts = ylimMax ? {min:0,max:ylimMax} : {beginAtZero:true};
@@ -824,11 +861,11 @@ function drawCDF(clean,fit,xs,xmin,xmax,xlabel,dist){
 }
 
 /* ═══════════════════════════════ DRAW COMBINED ═══════════════════════ */
-function drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,ksR,chiR,lilR,adR,ylimMax){
+function drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,ksR,chiR,lilR,adR,ylimMax,binMeth){
   document.getElementById('combPH').style.display='none';
   const canvas=document.getElementById('combChart');canvas.style.display='block';
   if(charts.combChart){charts.combChart.destroy();charts.combChart=null;}
-  const edges=fdBins(clean,xmin,xmax);
+  const edges=calcBins(clean,xmin,xmax,binMeth||'fd');
   const hist=histPDF(clean,edges);
   const ecdf=ecdfPts(clean);
   const mFit=fit.meanFit, sFit=isFinite(fit.stdFit)?fit.stdFit:0;
@@ -842,8 +879,7 @@ function drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,ksR,chiR,lilR,adR,ylimM
         {label:'Histogram',data:hist.densities,backgroundColor:CHT.hist,borderColor:CHT.histBorder,borderWidth:0.5,barPercentage:1,categoryPercentage:1,yAxisID:'yL',order:4},
         {label:`PDF — ${dist}`,data:hist.centers.map(c=>fit.pdf(c)),type:'line',borderColor:CHT.pdf,borderWidth:2,pointRadius:0,fill:false,tension:.4,yAxisID:'yL',order:3},
         {label:'EDF (empirical)',data:ecdf.map(pt=>({x:pt.x,y:pt.p})),type:'line',borderColor:CHT.edf,borderWidth:1.2,pointRadius:2,pointBackgroundColor:CHT.edf,fill:false,stepped:true,yAxisID:'yR',order:2,xAxisID:'xLinear'},
-        {label:`CDF — ${dist}`,data:xs.map(x=>({x,y:fit.cdf(x)})),type:'line',borderColor:CHT.cdf,borderWidth:2,pointRadius:0,fill:false,tension:.3,yAxisID:'yR',order:1,xAxisID:'xLinear'}
-      ]
+        {label:`CDF — ${dist}`,data:xs.map(x=>({x,y:fit.cdf(x)})),type:'line',borderColor:CHT.cdf,borderWidth:2,pointRadius:0,fill:false,tension:.3,yAxisID:'yR',order:1,xAxisID:'xLinear'}      ]
     },
     options:{
       responsive:true,maintainAspectRatio:false,animation:false,
@@ -951,8 +987,8 @@ function calcInverse(){
   // — PDF: redraw with inverse line baked into annotation plugin
   if(fitResult && charts.pdfChart){
     charts.pdfChart.destroy();
-    const {clean,fit,xmin,xmax,xlabel,dist}=fitResult;
-    const edges=fdBins(clean,xmin,xmax);
+    const {clean,fit,xmin,xmax,xlabel,dist,binMeth}=fitResult;
+    const edges=calcBins(clean,xmin,xmax,binMeth||'fd');
     const hist=histPDF(clean,edges);
     const mFit=fit.meanFit, sFit=isFinite(fit.stdFit)?fit.stdFit:0;
     const ylimRaw=parseFloat(document.getElementById('ylimMax').value);
@@ -981,8 +1017,8 @@ function calcInverse(){
 
   // — Combined: redraw with inverse line
   if(fitResult && charts.combChart){
-    const {clean,fit,xmin,xmax,xlabel,dist}=fitResult;
-    const edges=fdBins(clean,xmin,xmax);
+    const {clean,fit,xmin,xmax,xlabel,dist,binMeth}=fitResult;
+    const edges=calcBins(clean,xmin,xmax,binMeth||'fd');
     const hist=histPDF(clean,edges);
     const ecdf=ecdfPts(clean);
     const mFit=fit.meanFit, sFit=isFinite(fit.stdFit)?fit.stdFit:0;

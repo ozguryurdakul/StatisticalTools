@@ -173,20 +173,33 @@ select option{background:var(--panel2)}
 <!-- ═══════════ SIDEBAR ═══════════ -->
 <div id="sidebar">
 
-  <!-- File upload -->
+  <!-- Data input -->
   <div class="sec">
-    <div class="sec-title">Data File</div>
-    <label class="upload-zone" id="uploadZone" for="fileIn">
-      <input type="file" id="fileIn" accept=".txt,.csv"
-        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
-        onchange="loadFile(this.files[0])">
-      <div class="uz-icon" style="font-size:16px;margin-bottom:3px">⬆</div>
-      <div class="uz-text" style="font-size:10px">Click or drag &amp; drop &nbsp;<strong>.txt</strong> / <strong>.csv</strong><br><small>One value per line · comma/space/tab separated</small></div>
-      <div class="uz-name" id="fname"></div>
-    </label>
+    <div class="sec-title">Data Input</div>
+    <div style="display:flex;gap:4px;margin-bottom:8px">
+      <button class="btn btn-gray btn-sm" id="inModeFile" style="flex:1;justify-content:center" onclick="setInputMode('file')">📁 File</button>
+      <button class="btn btn-gray btn-sm" id="inModePaste" style="flex:1;justify-content:center" onclick="setInputMode('paste')">⌨ Type / Paste</button>
+    </div>
+
+    <div id="fileInputWrap">
+      <label class="upload-zone" id="uploadZone" for="fileIn">
+        <input type="file" id="fileIn" accept=".txt,.csv"
+          style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+          onchange="loadFile(this.files[0])">
+        <div class="uz-icon" style="font-size:16px;margin-bottom:3px">⬆</div>
+        <div class="uz-text" style="font-size:10px">Click or drag &amp; drop &nbsp;<strong>.txt</strong> / <strong>.csv</strong><br><small>One value per line · comma/space/tab separated</small></div>
+        <div class="uz-name" id="fname"></div>
+      </label>
+    </div>
+
+    <div id="pasteInputWrap" style="display:none">
+      <textarea id="pasteArea" placeholder="Paste or type values here&#10;one per line, or comma/space/tab separated&#10;&#10;e.g.&#10;24.3&#10;25.1&#10;23.8 26.2 24.9"
+        style="width:100%;height:110px;background:var(--bg);border:1px solid var(--border);color:var(--txt);font-family:var(--mono);font-size:11px;padding:7px;border-radius:4px;outline:none;resize:vertical;line-height:1.5"></textarea>
+      <button class="btn btn-green btn-sm" style="width:100%;justify-content:center;margin-top:6px" onclick="loadPasted()">✓ Load Values</button>
+    </div>
   </div>
 
-  <!-- Samples + settings -->
+  <!-- Settings -->
   <div class="sec">
     <div class="sec-title">Settings</div>
     <div class="nrow">
@@ -221,6 +234,14 @@ select option{background:var(--panel2)}
         <option value="loglogistic">Log-logistic</option>
       </select>
       <div class="hint" id="distHint">LogNormal: μ_ln (log-space mean), σ_ln (log-space std)</div>
+    </div>
+    <div style="margin-bottom:7px">
+      <label>Moment lines on plot</label>
+      <select id="momentMode">
+        <option value="fitted" selected>Fitted moments (μ, μ±σ of fit)</option>
+        <option value="data">Data moments (sample mean ± std)</option>
+        <option value="none">None (curve only)</option>
+      </select>
     </div>
     <div style="margin-bottom:7px">
       <label>Histogram bin method</label>
@@ -697,25 +718,53 @@ function adTest(arr,cdfFn){
   p=Math.max(0,Math.min(1,p));return{stat:A2a,p,reject:p<0.05};
 }
 
-/* ═══════════════════════════════ FILE LOAD ════════════════════════════ */
+/* ═══════════════════════════════ DATA INPUT ══════════════════════════ */
+function parseValues(text){
+  return text.split(/[\s,;|\t\r\n]+/).map(s=>parseFloat(s.replace(',','.'))).filter(x=>isFinite(x)&&!isNaN(x));
+}
+
+function applyLoadedData(nums, sourceLabel){
+  rawData=nums;
+  document.getElementById('nPts').value=nums.length;
+  document.getElementById('btnRun').disabled=false;
+  const mn=Math.min(...nums),mx=Math.max(...nums),r=mx-mn;
+  document.getElementById('xlimMin').value=(mn-0.1*r).toFixed(3);
+  document.getElementById('xlimMax').value=(mx+0.1*r).toFixed(3);
+  document.getElementById('logBox').textContent=
+    '===== Data Loaded =====\nSource: '+sourceLabel+'\nN     : '+nums.length+'\nMin   : '+mn.toFixed(4)+'\nMax   : '+mx.toFixed(4)+'\nMean  : '+arrMean(nums).toFixed(4)+'\nStd   : '+arrStd(nums).toFixed(4)+'\n\nConfigure settings and click Run Analysis.';
+  setStatus(nums.length+' values loaded. Click Run Analysis.','ok');
+}
+
+function setInputMode(mode){
+  const fileBtn=document.getElementById('inModeFile'), pasteBtn=document.getElementById('inModePaste');
+  if(mode==='file'){
+    document.getElementById('fileInputWrap').style.display='';
+    document.getElementById('pasteInputWrap').style.display='none';
+    fileBtn.classList.remove('btn-gray');fileBtn.classList.add('btn-blue');
+    pasteBtn.classList.add('btn-gray');pasteBtn.classList.remove('btn-blue');
+  } else {
+    document.getElementById('fileInputWrap').style.display='none';
+    document.getElementById('pasteInputWrap').style.display='';
+    pasteBtn.classList.remove('btn-gray');pasteBtn.classList.add('btn-blue');
+    fileBtn.classList.add('btn-gray');fileBtn.classList.remove('btn-blue');
+  }
+}
+
+function loadPasted(){
+  const nums=parseValues(document.getElementById('pasteArea').value);
+  if(nums.length<5){setStatus('Too few values — need at least 5.','err');alert('Please enter at least 5 numeric values.');return}
+  applyLoadedData(nums, 'manual entry');
+}
+
 function loadFile(file){
   if(!file)return;
   document.getElementById('fname').textContent='⏳ '+file.name;
   const reader=new FileReader();
   reader.onload=e=>{
-    const nums=e.target.result.split(/[\s,;|\t\r\n]+/).map(s=>parseFloat(s.replace(',','.'))).filter(x=>isFinite(x)&&!isNaN(x));
+    const nums=parseValues(e.target.result);
     if(nums.length<5){document.getElementById('fname').textContent='⚠ Too few values — check file';return}
-    rawData=nums;
-    document.getElementById('nPts').value=nums.length;
-    document.getElementById('btnRun').disabled=false;
-    // Auto set xlim from data
-    const mn=Math.min(...nums),mx=Math.max(...nums),r=mx-mn;
-    document.getElementById('xlimMin').value=(mn-0.1*r).toFixed(3);
-    document.getElementById('xlimMax').value=(mx+0.1*r).toFixed(3);
     document.getElementById('fname').textContent='✓ '+file.name;
-    document.getElementById('logBox').textContent=
-      '===== File Loaded =====\nFile  : '+file.name+'\nN     : '+nums.length+'\nMin   : '+Math.min(...nums).toFixed(4)+'\nMax   : '+Math.max(...nums).toFixed(4)+'\nMean  : '+arrMean(nums).toFixed(4)+'\nStd   : '+arrStd(nums).toFixed(4)+'\n\nConfigure settings and click Run Analysis.';
-    setStatus('File loaded: '+nums.length+' values. Click Run Analysis.','ok');
+    applyLoadedData(nums, file.name);
   };
   reader.onerror=()=>{document.getElementById('fname').textContent='⚠ Error reading file';};
   reader.readAsText(file);
@@ -727,6 +776,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   zone.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();zone.style.borderColor='';const f=e.dataTransfer.files[0];if(f)loadFile(f);});
   document.getElementById('fileIn').addEventListener('change',function(){loadFile(this.files[0])});
   document.querySelectorAll('.tab').forEach((t,i)=>t.addEventListener('click',()=>showTab(i)));
+  setInputMode('file');
 });
 
 /* ═══════════════════════════════ RUN ═════════════════════════════════ */
@@ -735,6 +785,7 @@ function runAnalysis(){
   const dist     = document.getElementById('distType').value;
   const outMeth  = document.getElementById('outlierMethod').value;
   const binMeth  = document.getElementById('binMethod').value;
+  const momMode  = document.getElementById('momentMode').value;
   const xmin     = parseFloat(document.getElementById('xlimMin').value);
   const xmax     = parseFloat(document.getElementById('xlimMax').value);
   const xlabel   = document.getElementById('xlabel').value||'x';
@@ -748,7 +799,7 @@ function runAnalysis(){
 
   // Fit
   const fit = fitDist(clean, dist);
-  fitResult = {fit, clean, dist, xmin, xmax, xlabel, binMeth};
+  fitResult = {fit, clean, dist, xmin, xmax, xlabel, binMeth, momMode};
 
   // Stats (go to log only now)
   document.getElementById('distBadge').textContent=dist.charAt(0).toUpperCase()+dist.slice(1);
@@ -775,9 +826,9 @@ function runAnalysis(){
   const ylimRaw = parseFloat(document.getElementById('ylimMax').value);
   const ylimMax = isFinite(ylimRaw) && ylimRaw > 0 ? ylimRaw : null;
 
-  drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax,binMeth);
+  drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax,binMeth,momMode);
   drawCDF(clean,fit,xs,xmin,xmax,xlabel,dist);
-  drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,ksR,chiR,lilR,adR,ylimMax,binMeth);
+  drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,ksR,chiR,lilR,adR,ylimMax,binMeth,momMode);
 
   // Log
   document.getElementById('logBox').textContent=buildLog(rawData.length,clean.length,outlierVals.length,outMeth,clean,fit,dist,ksR,chiR,lilR,adR);
@@ -792,6 +843,13 @@ function setGC(id,name,reject,stat){
   el.innerHTML=`<span class="gc-name">${name}</span><span class="gc-res">${reject?'FAIL':'PASS'}</span><span class="gc-p">${stat}</span>`;
 }
 
+/* ── compute (mean, std) for moment lines based on mode ── */
+function momentValues(fit, clean, momMode){
+  if(momMode==='none') return {m:NaN, s:0};            // no lines
+  if(momMode==='data') return {m:arrMean(clean), s:arrStd(clean)};
+  return {m:fit.meanFit, s:isFinite(fit.stdFit)?fit.stdFit:0}; // fitted (default)
+}
+
 /* ── shared chart colours (white background) ── */
 const CHT = {
   axTick:'#444', axTitle:'#333', axGrid:'rgba(0,0,0,.07)',
@@ -802,13 +860,14 @@ const CHT = {
 };
 
 /* ═══════════════════════════════ DRAW PDF ════════════════════════════ */
-function drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax,binMeth){
+function drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax,binMeth,momMode,invLine){
   document.getElementById('pdfPH').style.display='none';
   const canvas=document.getElementById('pdfChart');canvas.style.display='block';
   if(charts.pdfChart){charts.pdfChart.destroy();charts.pdfChart=null;}
   const edges=calcBins(clean,xmin,xmax,binMeth||'fd');
   const hist=histPDF(clean,edges);
-  const mFit=fit.meanFit, sFit=isFinite(fit.stdFit)?fit.stdFit:0;
+  const mv=momentValues(fit,clean,momMode||'fitted');
+  const mFit=mv.m, sFit=mv.s;
   const yOpts = ylimMax ? {min:0,max:ylimMax} : {beginAtZero:true};
 
   charts.pdfChart=new Chart(canvas,{
@@ -832,7 +891,7 @@ function drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax,binMeth){
         customCanvasBackgroundColor:{color:'white'}
       }
     },
-    plugins:[whiteBackground(), annotationPlugin(mFit,sFit,null,null)]
+    plugins:[whiteBackground(), annotationPlugin(mFit,sFit,null,invLine||null)]
   });
 }
 
@@ -861,14 +920,15 @@ function drawCDF(clean,fit,xs,xmin,xmax,xlabel,dist){
 }
 
 /* ═══════════════════════════════ DRAW COMBINED ═══════════════════════ */
-function drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,ksR,chiR,lilR,adR,ylimMax,binMeth){
+function drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,ksR,chiR,lilR,adR,ylimMax,binMeth,momMode,invLine){
   document.getElementById('combPH').style.display='none';
   const canvas=document.getElementById('combChart');canvas.style.display='block';
   if(charts.combChart){charts.combChart.destroy();charts.combChart=null;}
   const edges=calcBins(clean,xmin,xmax,binMeth||'fd');
   const hist=histPDF(clean,edges);
   const ecdf=ecdfPts(clean);
-  const mFit=fit.meanFit, sFit=isFinite(fit.stdFit)?fit.stdFit:0;
+  const mv=momentValues(fit,clean,momMode||'fitted');
+  const mFit=mv.m, sFit=mv.s;
   const yLOpts = ylimMax ? {min:0,max:ylimMax} : {beginAtZero:true};
 
   charts.combChart=new Chart(canvas,{
@@ -891,7 +951,7 @@ function drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,ksR,chiR,lilR,adR,ylimM
       },
       plugins:{legend:{labels:{color:'#333',font:{size:10}}}}
     },
-    plugins:[whiteBackground(), annotationPlugin(mFit,sFit,'yL',null)]
+    plugins:[whiteBackground(), annotationPlugin(mFit,sFit,'yL',invLine||null)]
   });
 
   document.getElementById('combInfo').innerHTML='';
@@ -918,7 +978,7 @@ function annotationPlugin(mFit,sFit,yAxisID,invLine){
       const ctx=chart.ctx;
       const xsc=chart.scales.x;
       const ysc=chart.scales[yAxisID||'y'];
-      if(!xsc||!ysc||!isFinite(mFit))return;
+      if(!xsc||!ysc)return;
       const labels=chart.data.labels;
       function xpx(val){
         if(xsc.type==='linear')return xsc.getPixelForValue(val);
@@ -930,25 +990,26 @@ function annotationPlugin(mFit,sFit,yAxisID,invLine){
       const yt90= ysc.getPixelForValue(ysc.max*0.93);
       const yt65= ysc.getPixelForValue(ysc.max*0.65);
       ctx.save();
-      // mean line
-      ctx.strokeStyle=CHT.mean;ctx.lineWidth=1.3;ctx.setLineDash([5,3]);
-      ctx.beginPath();ctx.moveTo(xpx(mFit),yb);ctx.lineTo(xpx(mFit),yt90);ctx.stroke();
-      ctx.fillStyle=CHT.mean;ctx.font='bold 9px monospace';
-      ctx.save();ctx.translate(xpx(mFit)+10,yt90+4);ctx.rotate(Math.PI/2);
-      ctx.fillText('μ = '+mFit.toFixed(3),0,0);ctx.restore();
-      // ±σ lines
-      if(sFit>0){
-        const posOnly=['lognormal','weibull','gamma','rayleigh','frechet','loglogistic','exponential'];
-        [mFit-sFit,mFit+sFit].forEach((v,i)=>{
-          if(v<=0 && posOnly.includes(fitResult?.dist)) return;
-          ctx.strokeStyle=CHT.sigma;ctx.lineWidth=0.9;ctx.setLineDash([3,3]);
-          ctx.beginPath();ctx.moveTo(xpx(v),yb);ctx.lineTo(xpx(v),yt65);ctx.stroke();
-          ctx.fillStyle=CHT.sigma;ctx.font='9px monospace';
-          ctx.save();ctx.translate(xpx(v)+10,yt65+4);ctx.rotate(Math.PI/2);
-          ctx.fillText((i===0?'μ−σ':'μ+σ')+' = '+v.toFixed(3),0,0);ctx.restore();
-        });
+      // mean & ±σ lines (skipped when mFit is NaN, i.e. momMode='none')
+      if(isFinite(mFit)){
+        ctx.strokeStyle=CHT.mean;ctx.lineWidth=1.3;ctx.setLineDash([5,3]);
+        ctx.beginPath();ctx.moveTo(xpx(mFit),yb);ctx.lineTo(xpx(mFit),yt90);ctx.stroke();
+        ctx.fillStyle=CHT.mean;ctx.font='bold 9px monospace';
+        ctx.save();ctx.translate(xpx(mFit)+10,yt90+4);ctx.rotate(Math.PI/2);
+        ctx.fillText('μ = '+mFit.toFixed(3),0,0);ctx.restore();
+        if(sFit>0){
+          const posOnly=['lognormal','weibull','gamma','rayleigh','frechet','loglogistic','exponential'];
+          [mFit-sFit,mFit+sFit].forEach((v,i)=>{
+            if(v<=0 && posOnly.includes(fitResult?.dist)) return;
+            ctx.strokeStyle=CHT.sigma;ctx.lineWidth=0.9;ctx.setLineDash([3,3]);
+            ctx.beginPath();ctx.moveTo(xpx(v),yb);ctx.lineTo(xpx(v),yt65);ctx.stroke();
+            ctx.fillStyle=CHT.sigma;ctx.font='9px monospace';
+            ctx.save();ctx.translate(xpx(v)+10,yt65+4);ctx.rotate(Math.PI/2);
+            ctx.fillText((i===0?'μ−σ':'μ+σ')+' = '+v.toFixed(3),0,0);ctx.restore();
+          });
+        }
       }
-      // inverse probability line
+      // inverse probability line (always drawn when requested)
       if(invLine && isFinite(invLine.val)){
         const iv=invLine.val;
         ctx.strokeStyle=CHT.inv;ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
@@ -975,14 +1036,14 @@ function calcInverse(){
       charts.cdfChart.update();
     }
     if(fitResult){
-      const {clean,fit,xmin,xmax,xlabel,dist,binMeth}=fitResult;
+      const {clean,fit,xmin,xmax,xlabel,dist,binMeth,momMode}=fitResult;
       const xlo=Math.max(1e-300,fit.icdf(0.001)||xmin);
       const xhi=fit.icdf(0.999)||xmax;
       const xs=linspace(Math.max(xmin,xlo),Math.min(xmax,xhi),500);
       const ylimRaw=parseFloat(document.getElementById('ylimMax').value);
       const ylimMax=isFinite(ylimRaw)&&ylimRaw>0?ylimRaw:null;
-      drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax,binMeth);
-      drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,null,null,null,null,ylimMax,binMeth);
+      drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax,binMeth,momMode,null);
+      drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,null,null,null,null,ylimMax,binMeth,momMode,null);
     }
     return;
   }
@@ -1003,70 +1064,16 @@ function calcInverse(){
     charts.cdfChart.update();
   }
 
-  // — PDF: redraw with inverse line baked into annotation plugin
-  if(fitResult && charts.pdfChart){
-    charts.pdfChart.destroy();
-    const {clean,fit,xmin,xmax,xlabel,dist,binMeth}=fitResult;
-    const edges=calcBins(clean,xmin,xmax,binMeth||'fd');
-    const hist=histPDF(clean,edges);
-    const mFit=fit.meanFit, sFit=isFinite(fit.stdFit)?fit.stdFit:0;
+  // — PDF & Combined: redraw with inverse line via the standard draw functions
+  if(fitResult){
+    const {clean,fit,xmin,xmax,xlabel,dist,binMeth,momMode}=fitResult;
+    const xlo=Math.max(1e-300,fit.icdf(0.001)||xmin);
+    const xhi=fit.icdf(0.999)||xmax;
+    const xs=linspace(Math.max(xmin,xlo),Math.min(xmax,xhi),500);
     const ylimRaw=parseFloat(document.getElementById('ylimMax').value);
     const ylimMax=isFinite(ylimRaw)&&ylimRaw>0?ylimRaw:null;
-    const yOpts=ylimMax?{min:0,max:ylimMax}:{beginAtZero:true};
-    charts.pdfChart=new Chart(document.getElementById('pdfChart'),{
-      type:'bar',
-      data:{
-        labels:hist.centers.map(c=>c.toFixed(3)),
-        datasets:[
-          {label:'Histogram',data:hist.densities,backgroundColor:CHT.hist,borderColor:CHT.histBorder,borderWidth:0.5,barPercentage:1,categoryPercentage:1,order:2},
-          {label:`PDF — ${dist}`,data:hist.centers.map(c=>fit.pdf(c)),type:'line',borderColor:CHT.pdf,borderWidth:2,pointRadius:0,fill:false,tension:.4,order:1}
-        ]
-      },
-      options:{
-        responsive:true,maintainAspectRatio:false,animation:false,
-        scales:{
-          x:{title:{display:true,text:xlabel,color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10},maxTicksLimit:10},grid:{color:CHT.axGrid}},
-          y:{...yOpts,title:{display:true,text:'f(x)',color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10}},grid:{color:CHT.axGrid}}
-        },
-        plugins:{legend:{labels:{color:'#333',font:{size:10}}}}
-      },
-      plugins:[whiteBackground(), annotationPlugin(mFit,sFit,null,invLine)]
-    });
-  }
-
-  // — Combined: redraw with inverse line
-  if(fitResult && charts.combChart){
-    const {clean,fit,xmin,xmax,xlabel,dist,binMeth}=fitResult;
-    const edges=calcBins(clean,xmin,xmax,binMeth||'fd');
-    const hist=histPDF(clean,edges);
-    const ecdf=ecdfPts(clean);
-    const mFit=fit.meanFit, sFit=isFinite(fit.stdFit)?fit.stdFit:0;
-    const ylimRaw=parseFloat(document.getElementById('ylimMax').value);
-    const ylimMax=isFinite(ylimRaw)&&ylimRaw>0?ylimRaw:null;
-    const yLOpts=ylimMax?{min:0,max:ylimMax}:{beginAtZero:true};
-    charts.combChart.destroy();
-    charts.combChart=new Chart(document.getElementById('combChart'),{
-      type:'bar',
-      data:{
-        labels:hist.centers.map(c=>c.toFixed(3)),
-        datasets:[
-          {label:'Histogram',data:hist.densities,backgroundColor:CHT.hist,borderColor:CHT.histBorder,borderWidth:0.5,barPercentage:1,categoryPercentage:1,yAxisID:'yL',order:4},
-          {label:`PDF — ${dist}`,data:hist.centers.map(c=>fit.pdf(c)),type:'line',borderColor:CHT.pdf,borderWidth:2,pointRadius:0,fill:false,tension:.4,yAxisID:'yL',order:3},
-          {label:'EDF',data:hist.centers.map(c=>{const e=ecdf.find(pt=>pt.x>=c);return e?e.p:null}),type:'line',borderColor:CHT.edf,borderWidth:1,pointRadius:0,fill:false,stepped:true,yAxisID:'yR',order:2,spanGaps:false},
-          {label:`CDF — ${dist}`,data:hist.centers.map(c=>fit.cdf(c)),type:'line',borderColor:CHT.cdf,borderWidth:2,pointRadius:0,fill:false,tension:.3,yAxisID:'yR',order:1}
-        ]
-      },
-      options:{
-        responsive:true,maintainAspectRatio:false,animation:false,
-        scales:{
-          x:{title:{display:true,text:xlabel,color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10},maxTicksLimit:10},grid:{color:CHT.axGrid}},
-          yL:{type:'linear',position:'left',...yLOpts,title:{display:true,text:'f(x)',color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10}},grid:{color:CHT.axGrid}},
-          yR:{type:'linear',position:'right',min:0,max:1,title:{display:true,text:'F(x)',color:CHT.cdf,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10}},grid:{drawOnChartArea:false}}
-        },
-        plugins:{legend:{labels:{color:'#333',font:{size:10}}}}
-      },
-      plugins:[whiteBackground(), annotationPlugin(mFit,sFit,'yL',invLine)]
-    });
+    if(charts.pdfChart) drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax,binMeth,momMode,invLine);
+    if(charts.combChart) drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,null,null,null,null,ylimMax,binMeth,momMode,invLine);
   }
 }
 
@@ -1134,11 +1141,29 @@ function distMode(d,p1,p2){
   return NaN;
 }
 
+/* native parameter description for each distribution */
+function distNativeParams(dist, p1, p2){
+  const f=(v)=>isFinite(v)?v.toFixed(6):'N/A';
+  switch(dist){
+    case 'normal':      return [`μ (mean)        : ${f(p1)}`, `σ (std dev)     : ${f(p2)}`];
+    case 'lognormal':   return [`μ_ln (log mean) : ${f(p1)}`, `σ_ln (log std)  : ${f(p2)}`];
+    case 'weibull':     return [`k (shape)       : ${f(p1)}`, `λ (scale)       : ${f(p2)}`];
+    case 'gamma':       return [`α (shape)       : ${f(p1)}`, `β (scale)       : ${f(p2)}`];
+    case 'rayleigh':    return [`σ (scale)       : ${f(p1)}`, null];
+    case 'exponential': return [`λ (rate)        : ${f(p1)}`, `1/λ (mean)      : ${f(1/p1)}`];
+    case 'uniform':     return [`a (min)         : ${f(p1)}`, `b (max)         : ${f(p2)}`];
+    case 'gumbel':      return [`μ (location)    : ${f(p1)}`, `β (scale)       : ${f(p2)}`];
+    case 'frechet':     return [`α (shape)       : ${f(p1)}`, `s (scale)       : ${f(p2)}`];
+    case 'loglogistic': return [`α (scale)       : ${f(p1)}`, `β (shape)       : ${f(p2)}`];
+    default:            return [`p1              : ${f(p1)}`, `p2              : ${f(p2)}`];
+  }
+}
+
 function buildLog(nRaw,nClean,nOut,outMeth,clean,fit,dist,ks,chi,lil,ad){
   const m=arrMean(clean),s=arrStd(clean),med=arrMedian(clean);
-  const p1l=DIST_P1_LABELS[dist]||'p1',p2l=DIST_P2_LABELS[dist]||'p2';
   const mode=distMode(dist,fit.p1,fit.p2);
   const modeStr=isFinite(mode)?mode.toFixed(5):'—';
+  const nat=distNativeParams(dist,fit.p1,fit.p2).filter(x=>x!==null);
   return `===== Data Summary =====
 N raw            : ${nRaw}
 N (after removal): ${nClean}  (removed: ${nOut}, method: ${outMeth})
@@ -1150,8 +1175,9 @@ Std Dev (data)   : ${s.toFixed(5)}
 CoV (data)       : ${(s/m*100).toFixed(3)} %
 
 ===== Fitted Distribution (${dist}) =====
-${p1l.padEnd(16)}: ${fit.p1.toFixed(6)}
-${p2l.padEnd(16)}: ${isNaN(fit.p2)?'N/A':fit.p2.toFixed(6)}
+-- Native parameters --
+${nat.join('\n')}
+-- Derived moments --
 Mean (fit)       : ${isFinite(fit.meanFit)?fit.meanFit.toFixed(5):'Inf'}
 Median (fit)     : ${isFinite(fit.icdf(0.5))?fit.icdf(0.5).toFixed(5):'Inf'}
 Mode (fit)       : ${modeStr}

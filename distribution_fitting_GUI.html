@@ -591,7 +591,7 @@ function detectOutliers(arr, method){
     const med=arrMedian(arr);
     const mad=arrMedian(arr.map(x=>Math.abs(x-med)))*1.4826;
     if(mad===0)return new Array(n).fill(false);
-    return arr.map(x=>Math.abs(x-med)/mad>3.5);
+    return arr.map(x=>Math.abs(x-med)/mad>3);
   }
   if(method==='iqr'){
     const s=[...arr].sort((a,b)=>a-b);

@@ -236,14 +236,6 @@ select option{background:var(--panel2)}
       <div class="hint" id="distHint">LogNormal: μ_ln (log-space mean), σ_ln (log-space std)</div>
     </div>
     <div style="margin-bottom:7px">
-      <label>Moment lines on plot</label>
-      <select id="momentMode">
-        <option value="fitted" selected>Fitted moments (μ, μ±σ of fit)</option>
-        <option value="data">Data moments (sample mean ± std)</option>
-        <option value="none">None (curve only)</option>
-      </select>
-    </div>
-    <div style="margin-bottom:7px">
       <label>Histogram bin method</label>
       <select id="binMethod">
         <option value="fd" selected>Freedman-Diaconis  (default)</option>
@@ -252,6 +244,19 @@ select option{background:var(--panel2)}
         <option value="rice">Rice  (⌈2n^(1/3)⌉)</option>
         <option value="scott">Scott  (3.5σ·n^(-1/3))</option>
         <option value="auto">Auto  (max of Sturges & FD)</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Graph Properties -->
+  <div class="sec">
+    <div class="sec-title">Graph Properties</div>
+    <div style="margin-bottom:7px">
+      <label>Moment lines on plot</label>
+      <select id="momentMode">
+        <option value="fitted" selected>Fitted moments (μ, μ±σ of fit)</option>
+        <option value="data">Data moments (sample mean ± std)</option>
+        <option value="none">None (curve only)</option>
       </select>
     </div>
     <div class="row2">

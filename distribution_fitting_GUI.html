@@ -477,7 +477,6 @@ function gaminv(p,a){
 
 /* ═══════════════════════════════ DISTRIBUTION FUNCTIONS ══════════════ */
 function distPDF(x,d,p1,p2){
-  const eps=1e-300;
   if(d==='normal')    return normpdf((x-p1)/p2)/p2;
   if(d==='lognormal') return x<=0?0:Math.exp(-0.5*((Math.log(x)-p1)/p2)*((Math.log(x)-p1)/p2))/(x*p2*Math.sqrt(2*Math.PI));
   if(d==='weibull')   {if(x<=0)return 0;const z=x/p2;return(p1/p2)*Math.pow(z,p1-1)*Math.exp(-Math.pow(z,p1))}
@@ -542,18 +541,23 @@ function fitDist(arr, d){
     p1=arrMean(logs);p2=arrStd(logs);
   }
   else if(d==='weibull'){
-    // MLE via Newton-Raphson
+    // MLE via Newton-Raphson, initialised with Menon's estimator (stable for low CoV)
     const lx=arr.map(x=>Math.log(Math.max(x,1e-300)));
-    let k=Math.max(0.1,(m/s)*(m/s));
-    for(let it=0;it<80;it++){
+    const lstd=arrStd(lx);
+    let k=lstd>0?Math.PI/(Math.sqrt(6)*lstd):1;   // Menon estimator
+    k=Math.max(0.05,Math.min(200,k));
+    for(let it=0;it<100;it++){
       const xk=arr.map(x=>Math.pow(x,k));
       const s1=arrSum(xk)/n;
       const s2=arrSum(xk.map((v,i)=>v*lx[i]))/n;
       const s3=arrMean(lx);
       const s4=arrSum(xk.map((v,i)=>v*lx[i]*lx[i]))/n;
+      if(!isFinite(s1)||s1<=0){break;}
       const f=1/k+s3-s2/s1;
       const df=-1/(k*k)-((s1*s4-s2*s2)/(s1*s1));
-      const dk=f/df; k-=dk; if(k<=0)k=0.01; if(Math.abs(dk)<1e-10)break;
+      const dk=f/df; k-=dk;
+      if(k<=0)k=0.01; if(k>500)k=500;
+      if(Math.abs(dk)<1e-10)break;
     }
     p1=k; p2=Math.pow(arrSum(arr.map(x=>Math.pow(x,k)))/n,1/k);
   }
@@ -563,10 +567,12 @@ function fitDist(arr, d){
   else if(d==='uniform'){p1=Math.min(...arr);p2=Math.max(...arr)}
   else if(d==='gumbel'){p2=s*Math.sqrt(6)/Math.PI;p1=m-0.5772*p2}
   else if(d==='frechet'){
-    // MOM using log-moments
+    // MOM: shape from log-variance, scale from median relationship
+    // Fréchet: median = s·(ln2)^(-1/α)  →  s = median·(ln2)^(1/α)
     const lx=arr.map(x=>Math.log(Math.max(x,1e-300)));
-    const lm=arrMean(lx), ls=arrStd(lx);
-    p1=Math.max(0.1,1/ls); p2=med;
+    const ls=arrStd(lx);
+    const a=Math.max(0.1,1/ls);
+    p1=a; p2=med*Math.pow(Math.log(2),1/a);
   }
   else if(d==='loglogistic'){
     const lx=arr.map(x=>Math.log(Math.max(x,1e-300)));
@@ -634,34 +640,38 @@ function tInv(p,df){const z=norminv(1-p/2);return z+(z*z*z+z)/(4*df)+(5*z*z*z*z*
 function calcBins(arr, xlo, xhi, method){
   const n=arr.length;
   const s=[...arr].sort((a,b)=>a-b);
-  const range=xhi-xlo;
-  let nb;
+  const dataMin=s[0], dataMax=s[n-1];
+  const dataRange=Math.max(1e-12, dataMax-dataMin);
+  // guard invalid plot range
+  if(!isFinite(xlo)||!isFinite(xhi)||xhi<=xlo){xlo=dataMin;xhi=dataMax;}
+  // proper linear-interpolation quartiles
+  const q=(p)=>{const idx=p*(n-1),lo=Math.floor(idx),hi=Math.ceil(idx);return s[lo]+(s[hi]-s[lo])*(idx-lo);};
+  // Bin WIDTH h from the statistical rule applied to the DATA
+  let h;
   if(method==='fd'||method==='auto'){
-    const q1=s[Math.floor(n*0.25)],q3=s[Math.floor(n*0.75)],iqr=q3-q1;
-    const hfd=iqr>0?2*iqr*Math.pow(n,-1/3):range/Math.max(5,Math.ceil(Math.sqrt(n)));
-    const nbFD=Math.ceil(range/hfd);
+    const iqr=q(0.75)-q(0.25);
+    h=iqr>0?2*iqr*Math.pow(n,-1/3):dataRange/Math.max(5,Math.ceil(Math.sqrt(n)));
     if(method==='auto'){
-      const nbSturges=Math.ceil(Math.log2(n))+1;
-      nb=Math.max(nbFD,nbSturges);
-    } else {
-      nb=nbFD;
+      const hSturges=dataRange/(Math.ceil(Math.log2(n))+1);
+      h=Math.min(h,hSturges);   // 'auto' = max bins = min width
     }
   } else if(method==='sqrt'){
-    nb=Math.ceil(Math.sqrt(n));
+    h=dataRange/Math.ceil(Math.sqrt(n));
   } else if(method==='sturges'){
-    nb=Math.ceil(Math.log2(n))+1;
+    h=dataRange/(Math.ceil(Math.log2(n))+1);
   } else if(method==='rice'){
-    nb=Math.ceil(2*Math.pow(n,1/3));
+    h=dataRange/Math.ceil(2*Math.pow(n,1/3));
   } else if(method==='scott'){
     const sigma=arrStd(arr);
-    const hScott=sigma>0?3.5*sigma*Math.pow(n,-1/3):range/Math.ceil(Math.sqrt(n));
-    nb=Math.ceil(range/hScott);
+    h=sigma>0?3.5*sigma*Math.pow(n,-1/3):dataRange/Math.ceil(Math.sqrt(n));
   } else {
-    nb=Math.ceil(Math.sqrt(n)); // fallback
+    h=dataRange/Math.ceil(Math.sqrt(n));
   }
-  nb=Math.max(3,Math.min(100,nb));
+  // Bin GRID spans the PLOT range so bars align with linear axes; empty bins are zero
+  const span=xhi-xlo;
+  let nb=Math.max(3,Math.min(200,Math.ceil(span/h)));
   const edges=[];
-  for(let i=0;i<=nb;i++) edges.push(xlo+i*range/nb);
+  for(let i=0;i<=nb;i++) edges.push(xlo+i*span/nb);
   return edges;
 }
 function histPDF(arr,edges){
@@ -683,7 +693,7 @@ function ksTest(arr,cdfFn){
   let p=2*[1,2,3,4,5].reduce((t,j)=>t+(j%2===1?1:-1)*Math.exp(-2*j*j*lam*lam),0);
   p=Math.max(0,Math.min(1,p));return{stat:D,p,reject:p<0.05};
 }
-function chiSqTest(arr,cdfFn){
+function chiSqTest(arr,cdfFn,nParams){
   const n=arr.length,k=Math.max(5,Math.ceil(Math.sqrt(n)));
   const s=[...arr].sort((a,b)=>a-b);
   const edges=[s[0]-1e-9];
@@ -693,16 +703,25 @@ function chiSqTest(arr,cdfFn){
   s.forEach(x=>{let b=edges.findIndex((e,i)=>i<k&&x>=edges[i]&&x<edges[i+1]);if(b>=0)obs[b]++;});
   const exp=n/k;
   const chi2=obs.reduce((t,o)=>exp>0?t+(o-exp)*(o-exp)/exp:t,0);
-  const df=Math.max(1,k-3);
+  // df = (#bins - 1) - (#estimated parameters)
+  const df=Math.max(1,k-1-(nParams||2));
   const p=1-gamcdf(chi2*0.5,df*0.5);
   return{stat:chi2,df,p,reject:p<0.05};
+}
+// number of estimated parameters per distribution
+function distParamCount(dist){
+  if(dist==='rayleigh'||dist==='exponential') return 1;
+  return 2;
 }
 function lillieforsTest(arr,disttype){
   // Apply KS on log-transformed data for lognormal, raw otherwise
   const vals=disttype==='lognormal'?arr.map(x=>Math.log(Math.max(x,1e-300))):[...arr];
   const m=arrMean(vals),s=arrStd(vals);
   const res=ksTest(vals,x=>normcdf((x-m)/s));
-  const n=vals.length,Dcrit=0.895/Math.sqrt(n)-0.01+0.85/n;
+  // Lilliefors critical value at α=0.05 (Dallal-Wilkinson / Molin-Abdi form)
+  const n=vals.length;
+  const nStar=Math.sqrt(n)-0.01+0.85/Math.sqrt(n);
+  const Dcrit=0.895/nStar;
   return{stat:res.stat,p:res.p,reject:res.stat>Dcrit};
 }
 function adTest(arr,cdfFn){
@@ -811,7 +830,7 @@ function runAnalysis(){
 
   // GoF
   const ksR = ksTest(clean,fit.cdf);
-  const chiR= chiSqTest(clean,fit.cdf);
+  const chiR= chiSqTest(clean,fit.cdf,distParamCount(dist));
   const lilR= lillieforsTest(clean,dist);
   const adR = adTest(clean,fit.cdf);
   setGC('gc-ks', 'K–S Test',       ksR.reject,  `p = ${ksR.p.toFixed(4)}`);
@@ -886,15 +905,11 @@ function drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax,binMeth,momMode,invL
     },
     options:{
       responsive:true,maintainAspectRatio:false,animation:false,
-      backgroundColor:'white',
       scales:{
         x:{title:{display:true,text:xlabel,color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10},maxTicksLimit:10},grid:{color:CHT.axGrid}},
         y:{...yOpts,title:{display:true,text:'f(x)',color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10}},grid:{color:CHT.axGrid}}
       },
-      plugins:{
-        legend:{labels:{color:'#333',font:{size:10}}},
-        customCanvasBackgroundColor:{color:'white'}
-      }
+      plugins:{legend:{labels:{color:'#333',font:{size:10}}}}
     },
     plugins:[whiteBackground(), annotationPlugin(mFit,sFit,null,invLine||null)]
   });

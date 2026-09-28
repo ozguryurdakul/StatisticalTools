@@ -1,13 +1,9 @@
 # Audit: `PGA_PGV_PGD_Fourier_v3.m` (PGV / PGD and baseline correction)
 
-Files in this folder:
-
-| File | Purpose |
-|---|---|
-| `PGA_PGV_PGD_Fourier_v3.m` | original script (unchanged, for reference) |
-| `process_ground_motion.m` | corrected processing function |
-| `PGA_PGV_PGD_Fourier_v4.m` | driver script: read, process, print PGA/PGV/PGD, fc sweep, plots, export |
-| `test_process_ground_motion.m` | tests against records whose exact answer is known |
+The corrected code is one self-contained file, `PGA_PGV_PGD_Fourier_v4.m`. It needs
+MATLAB R2016b or newer with the Signal Processing Toolbox. The processing functions
+(`process_ground_motion`, `integrate_acc`, `set_defaults`) are local functions at the end
+of that file. `PGA_PGV_PGD_Fourier_v3.m` is the original, kept unchanged for reference.
 
 ## How it was checked
 
@@ -129,11 +125,10 @@ an error if the sampling is not uniform.
 
 ## Running
 
-```matlab
-% MATLAB (Signal Processing Toolbox)   |  Octave:  pkg load signal
-test_process_ground_motion   % must print ALL TESTS PASSED
-PGA_PGV_PGD_Fourier_v4        % edit the settings block first (file, units, fc)
-```
+Edit the settings block at the top of `PGA_PGV_PGD_Fourier_v4.m` (file name, units,
+filter settings), then run it in MATLAB.
 
-Octave 8.4 output on the synthetic record: PGV 56.48 cm/s and PGD 28.06 cm
-(exact values: 56.55 and 27.90). All 8 tests pass.
+The tests described above were run in Octave 8.4 with the signal package. Octave cannot
+run local functions placed at the end of a script, so the tests used a copy with the
+functions moved to the top. That copy gave PGV 56.48 cm/s and PGD 28.06 cm on the
+synthetic record (exact values: 56.55 and 27.90), and all 8 checks passed.

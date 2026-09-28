@@ -54,8 +54,10 @@ end
 %% ---- Plots ----------------------------------------------------------------
 figure(1)
 subplot(3,1,1)
+plot(R.time, R.acc_raw, 'color', [0.7 0.7 0.7]); hold on   % as read, in cm/s^2
 plot(R.time, R.acc, 'k'); grid on
-ylabel('Acc. [cm/s^2]'); title(sprintf('Corrected, PGA = %.2f cm/s^2', R.PGA))
+ylabel('Acc. [cm/s^2]'); legend('original', 'corrected', 'Location', 'best')
+title(sprintf('PGA = %.2f cm/s^2', R.PGA))
 subplot(3,1,2)
 plot(R0.time, R0.vel, 'color', [0.7 0.7 0.7]); hold on
 plot(R.time, R.vel, 'k'); grid on

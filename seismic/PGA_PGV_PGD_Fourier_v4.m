@@ -75,6 +75,21 @@ legend('mean removal only', 'corrected', 'Location', 'best')
 title('Fourier amplitude spectrum of acceleration')
 xlim([0.01 1/(2*R.dt)])
 
+% Linear-axis spectra, original vs filtered (same layout as v3 figure 4)
+fmax = min(50, 1/(2*R.dt));                 % 50 Hz or Nyquist
+ymax = 1.05 * max([R0.FAS(R0.freq <= fmax); R.FAS(R.freq <= fmax)]);
+figure(3)
+subplot(2,1,1)
+plot(R0.freq, R0.FAS, 'b', 'LineWidth', 1.2); grid on
+xlabel('Frequency [Hz]'); ylabel('Fourier amplitude [cm/s]')
+title('Original Acceleration - Frequency Spectrum')
+xlim([0 fmax]); ylim([0 ymax])
+subplot(2,1,2)
+plot(R.freq, R.FAS, 'r', 'LineWidth', 1.2); grid on
+xlabel('Frequency [Hz]'); ylabel('Fourier amplitude [cm/s]')
+title('Filtered Acceleration - Frequency Spectrum')
+xlim([0 fmax]); ylim([0 ymax])
+
 %% ---- Export (with header) --------------------------------------------------
 fid = fopen('results_corrected.txt', 'w');
 fprintf(fid, '%% PGA=%.6g cm/s2  PGV=%.6g cm/s  PGD=%.6g cm\n', R.PGA, R.PGV, R.PGD);

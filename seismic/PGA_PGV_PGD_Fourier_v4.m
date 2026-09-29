@@ -5,14 +5,16 @@ clc
 %
 % Single self-contained file (MATLAB R2016b+ with Signal Processing Toolbox;
 % the processing functions are at the end of this file).
-% Input: 2-column text file [time(s)  acceleration].
+% Input: text file with 2 columns [time(s)  acceleration], or 1 column
+%        [acceleration] together with opt.dt_single.
 % Output units are cm/s^2, cm/s and cm (NOT mm).
 
 %% ---- Settings ------------------------------------------------------------
 file = 'kocaeli_ew.txt';
 
 opt.units          = 'cm/s2';   % units of the acceleration column: 'g','cm/s2','m/s2'
-opt.pre_event_s    = 0;         % >0: remove mean of first N s instead of whole-record mean
+opt.dt_single      = [];        % dt [s], needed ONLY if the file has one column (acc only)
+opt.pre_event_s    = 0;         % >0: remove mean of first N s (then baseline_order is not used)
 opt.baseline_order = 1;         % polynomial fitted to acc: 0 const, 1 linear, 2, 3; -1 none
 opt.taper_s        = 1;         % cosine taper at each end [s]
 opt.filter_type    = 'bandpass';% 'highpass' | 'bandpass' | 'none'
@@ -26,8 +28,16 @@ opt.disp_poly_order = 0;        % e.g. 6 to remove residual displacement drift; 
 %% ---- Read ----------------------------------------------------------------
 data = importdata(file);
 if isstruct(data), data = data.data; end
-time = data(:,1);
-acc  = data(:,2);
+data = data(all(isfinite(data), 2), :);      % drop blank / NaN rows
+if size(data, 2) >= 2
+    time = data(:,1);
+    acc  = data(:,2);
+elseif ~isempty(opt.dt_single)
+    acc  = data(:,1);
+    time = (0:numel(acc)-1)' * opt.dt_single;
+else
+    error('File has one column: set opt.dt_single to the sampling interval.');
+end
 
 %% ---- Uncorrected reference (to see what the corrections do) ---------------
 ref  = opt; ref.baseline_order = -1; ref.filter_type = 'none'; ref.taper_s = 0;
@@ -44,11 +54,13 @@ fprintf('Drift checks: v_end = %.3f cm/s, tail displacement slope = %.4f cm/s\n'
 
 %% ---- PGD sensitivity to the high-pass corner (always report this) ---------
 fcs = [0.03 0.05 0.07 0.1 0.15 0.2];
-fprintf('\n fc_low [Hz]   PGV [cm/s]   PGD [cm]\n');
-for f = fcs
-    o = opt; o.fc_low = f;
-    Rs = process_ground_motion(time, acc, o);
-    fprintf('   %5.3f      %8.2f    %8.2f\n', f, Rs.PGV, Rs.PGD);
+if ~strcmpi(opt.filter_type, 'none')
+    fprintf('\n fc_low [Hz]   PGV [cm/s]   PGD [cm]\n');
+    for f = fcs
+        o = opt; o.fc_low = f;
+        Rs = process_ground_motion(time, acc, o);
+        fprintf('   %5.3f      %8.2f    %8.2f\n', f, Rs.PGV, Rs.PGD);
+    end
 end
 
 %% ---- Plots ----------------------------------------------------------------
@@ -56,12 +68,12 @@ figure(1)
 subplot(3,1,1)
 plot(R.time, R.acc_raw, 'color', [0.7 0.7 0.7]); hold on   % as read, in cm/s^2
 plot(R.time, R.acc, 'k'); grid on
-ylabel('Acc. [cm/s^2]'); legend('original', 'corrected', 'Location', 'best')
+ylabel('Acc. [cm/s^2]'); legend('original', 'corrected', 'Location', 'northeast')
 title(sprintf('PGA = %.2f cm/s^2', R.PGA))
 subplot(3,1,2)
 plot(R0.time, R0.vel, 'color', [0.7 0.7 0.7]); hold on
 plot(R.time, R.vel, 'k'); grid on
-ylabel('Vel. [cm/s]'); legend('mean removal only', 'corrected', 'Location', 'best')
+ylabel('Vel. [cm/s]'); legend('mean removal only', 'corrected', 'Location', 'northeast')
 title(sprintf('PGV = %.2f cm/s', R.PGV))
 subplot(3,1,3)
 plot(R0.time, R0.dis, 'color', [0.7 0.7 0.7]); hold on
@@ -73,18 +85,18 @@ figure(2)
 loglog(R0.freq(2:end), R0.FAS(2:end), 'color', [0.7 0.7 0.7]); hold on
 loglog(R.freq(2:end), R.FAS(2:end), 'k'); grid on
 xlabel('Frequency [Hz]'); ylabel('Fourier amplitude [cm/s]')
-legend('mean removal only', 'corrected', 'Location', 'best')
+legend('mean removal only', 'corrected', 'Location', 'northeast')
 title('Fourier amplitude spectrum of acceleration')
 xlim([0.01 1/(2*R.dt)])
 
 % Linear-axis spectra, original vs filtered (same layout as v3 figure 4)
 fmax = min(50, 1/(2*R.dt));                 % 50 Hz or Nyquist
-ymax = 1.05 * max([R0.FAS(R0.freq <= fmax); R.FAS(R.freq <= fmax)]);
+ymax = 1.05 * max([R0.FAS(R0.freq <= fmax); R.FAS(R.freq <= fmax); eps]);
 figure(3)
 subplot(2,1,1)
 plot(R0.freq, R0.FAS, 'b', 'LineWidth', 1.2); grid on
 xlabel('Frequency [Hz]'); ylabel('Fourier amplitude [cm/s]')
-title('Original Acceleration - Frequency Spectrum')
+title('Original Acceleration (mean removed) - Frequency Spectrum')
 xlim([0 fmax]); ylim([0 ymax])
 subplot(2,1,2)
 plot(R.freq, R.FAS, 'r', 'LineWidth', 1.2); grid on
@@ -94,6 +106,7 @@ xlim([0 fmax]); ylim([0 ymax])
 
 %% ---- Export (with header) --------------------------------------------------
 fid = fopen('results_corrected.txt', 'w');
+if fid < 0, error('Cannot write results_corrected.txt (folder read-only?)'); end
 fprintf(fid, '%% PGA=%.6g cm/s2  PGV=%.6g cm/s  PGD=%.6g cm\n', R.PGA, R.PGV, R.PGD);
 fprintf(fid, '%% time[s]\tacc[cm/s2]\tvel[cm/s]\tdisp[cm]\n');
 fprintf(fid, '%.5f\t%.6e\t%.6e\t%.6e\n', [R.time R.acc R.vel R.dis]');
@@ -130,6 +143,7 @@ function R = process_ground_motion(time, acc_in, opt)
 %   opt fields (all optional; defaults in brackets):
 %     units          'g' | 'cm/s2' | 'm/s2' | 'mm/s2'              ['cm/s2']
 %     pre_event_s    length of pre-event noise used for the mean [s]  [0]
+%                    (if > 0, the polynomial baseline below is skipped)
 %     baseline_order polynomial order fitted to acc, -1 = none        [1]
 %     taper_s        cosine-taper length at each end [s]              [1]
 %     filter_type    'highpass' | 'bandpass' | 'none'                 ['bandpass']
@@ -150,14 +164,34 @@ time = time(:); acc = acc_in(:);
 n    = numel(acc);
 if numel(time) ~= n, error('time and acceleration must have equal length'); end
 
-% --- sampling interval: take it from the file, and make sure it is uniform
-dts = diff(time);
-dt  = median(dts);
-if max(abs(dts - dt)) > 1e-3*dt
-    error('Time vector is not uniformly sampled (dt varies by %.3g s). Resample first.', ...
-          max(abs(dts - dt)));
+if n < 10 || any(~isfinite(acc)) || any(~isfinite(time))
+    error('Need at least 10 finite samples.');
+end
+
+% --- sampling interval from the whole time span (robust to time values
+%     written with few decimals); reject gaps, repeats or reordering
+dt = (time(end) - time(1)) / (n - 1);
+if dt <= 0, error('Time must increase.'); end
+grid_err = max(abs(time - (time(1) + (0:n-1)'*dt)));
+if grid_err > 0.25*dt || any(diff(time) <= 0)
+    error(['Time vector is not uniformly sampled (off by up to %.3g s = %.2f dt). ', ...
+           'Check for gaps/duplicates or resample.'], grid_err, grid_err/dt);
 end
 Fs = 1/dt;
+
+% --- check the filter settings before doing any work
+use_filter = ~strcmpi(opt.filter_type, 'none');
+if use_filter
+    if ~(opt.fc_low > 0 && opt.fc_low < Fs/2)
+        error('fc_low must be > 0 and below Nyquist (%.3g Hz).', Fs/2);
+    end
+    if strcmpi(opt.filter_type, 'bandpass') && ~(opt.fc_high > opt.fc_low && opt.fc_high < Fs/2)
+        error('fc_high must be above fc_low and below Nyquist (%.3g Hz).', Fs/2);
+    end
+    if opt.order < 1 || opt.order ~= round(opt.order)
+        error('order must be a positive integer.');
+    end
+end
 
 % --- 1. units -> cm/s^2
 switch lower(opt.units)
@@ -180,7 +214,7 @@ end
 
 % --- 3. polynomial baseline on acceleration (least squares)
 %     time is centred and scaled so that polyfit stays well conditioned
-if opt.baseline_order >= 0
+if opt.baseline_order >= 0 && npre < 10
     tt = (0:n-1)' * dt;
     x  = (tt - mean(tt)) / std(tt);
     p  = polyfit(x, acc, opt.baseline_order);
@@ -197,7 +231,6 @@ end
 
 % --- 5. zero pads (Boore 2005): total pad = 1.5*order/fc for an acausal
 %     filter, split evenly between the two ends.
-use_filter = ~strcmpi(opt.filter_type, 'none');
 npad = 0;
 if use_filter && opt.pad
     npad = ceil(0.5 * 1.5 * opt.order / opt.fc_low / dt);
@@ -213,9 +246,6 @@ if use_filter
         case 'highpass'
             [z, pz, g] = butter(opt.order, opt.fc_low/nyq, 'high');
         case 'bandpass'
-            if opt.fc_high >= nyq
-                error('fc_high (%.3g Hz) must be below Nyquist (%.3g Hz)', opt.fc_high, nyq);
-            end
             [z, pz, g] = butter(opt.order, [opt.fc_low opt.fc_high]/nyq);
         otherwise
             error('Unknown filter_type "%s"', opt.filter_type);
@@ -306,7 +336,7 @@ end
 end
 
 function opt = set_defaults(opt)
-def = struct('units','cm/s2', 'pre_event_s',0, 'baseline_order',1, ...
+def = struct('units','cm/s2', 'dt_single',[], 'pre_event_s',0, 'baseline_order',1, ...
              'taper_s',1, 'filter_type','bandpass', 'fc_low',0.1, ...
              'fc_high',25, 'order',4, 'causal',false, 'pad',true, ...
              'keep_pads',false, 'integration','linear', 'disp_poly_order',0);

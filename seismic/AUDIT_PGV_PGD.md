@@ -132,3 +132,32 @@ The tests described above were run in Octave 8.4 with the signal package. Octave
 run local functions placed at the end of a script, so the tests used a copy with the
 functions moved to the top. That copy gave PGV 56.48 cm/s and PGD 28.06 cm on the
 synthetic record (exact values: 56.55 and 27.90), and all 8 checks passed.
+
+## Final review before release
+
+Bugs found and fixed in v4:
+
+| Issue | Before | Now |
+|---|---|---|
+| Time column written with few decimals (e.g. dt = 1/300 s saved as 0.0033/0.0034) | rejected as "not uniformly sampled" | dt is taken from the total time span; only real gaps, repeats or reordering are rejected |
+| `pre_event_s` | had no effect, because the polynomial baseline removed the whole-record mean again | the pre-event mean is used, and the polynomial baseline is skipped |
+| `fc_low = 0`, `fc_high` ≥ Nyquist, `fc_high` ≤ `fc_low`, order < 1 | crashed with "out of memory" or gave obscure errors | clear error message before any processing |
+| Single-column files (acceleration only) | crashed | supported through `opt.dt_single` |
+| Blank or NaN lines in the file | propagated NaN into every result | these rows are dropped |
+| fc sweep with `filter_type = 'none'` | printed six identical, misleading rows | skipped |
+| Output folder is read-only | `fprintf` error | clear error message |
+| `legend(...,'best')` | slow in MATLAB for long records | `'northeast'` |
+
+Re-verified in Octave 8.4:
+* all 8 checks against analytic answers pass;
+* the full script runs on 2-column and 1-column files;
+* every invalid-input case above produces its error message.
+
+Things students should know (these are not bugs):
+* **The result depends on `fc_low`.** Always look at the printed sweep table and state
+  which fc was used.
+* With the default acausal filter, v(0) and d(0) are slightly non-zero. This is expected:
+  the filter spreads energy into the zero pads.
+* The filter uses forward-backward passes, so `order = 4` behaves like an 8th-order
+  filter that is −6 dB at the corner. Set this the same way in SeismoSignal before
+  comparing results.

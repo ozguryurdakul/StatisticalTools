@@ -126,6 +126,8 @@ select option{background:var(--panel2)}
 .gc.pass .gc-res{color:var(--green)}
 .gc.fail .gc-res{color:var(--warn)}
 .gc.pend .gc-res{color:var(--txt3)}
+.gc.na{background:var(--panel2);opacity:.8}
+.gc.na .gc-res{color:var(--txt3)}
 .gc-p{font-size:10px;color:var(--txt3);font-family:var(--mono)}
 
 /* ── chart ── */
@@ -151,8 +153,28 @@ select option{background:var(--panel2)}
 /* ── toolbar ── */
 .toolbar{display:flex;gap:7px;margin-bottom:11px;flex-wrap:wrap}
 
+/* ── related tools ── */
+.tool-link{display:flex;align-items:center;gap:9px;padding:7px 10px;border:1px solid var(--border);border-radius:5px;
+  background:var(--panel2);color:var(--txt);text-decoration:none;font-size:11px;line-height:1.4;transition:border-color .15s}
+.tool-link:hover{border-color:var(--accent)}
+.tool-link .tl-icon{font-size:16px;flex-shrink:0}
+.tool-link .tl-name{font-weight:600;color:var(--accent)}
+.tool-link .tl-desc{color:var(--txt2);font-size:10px}
+.tool-link .tl-arrow{margin-left:auto;color:var(--txt3);font-size:12px}
+
 /* ── footer ── */
 #footer{display:none}
+
+/* ── narrow screens (tablet / phone): sidebar above results ── */
+@media (max-width:820px){
+  html,body{height:auto}
+  #topbar{flex-wrap:wrap;gap:4px 12px;position:static}
+  #topbar .author{margin-left:0;width:100%}
+  #layout{flex-direction:column;height:auto;overflow:visible}
+  #sidebar{width:100%;min-width:0;height:auto;border-right:none;border-bottom:1px solid var(--border)}
+  #results{height:auto;overflow:visible;padding:10px}
+  .grid2{grid-template-columns:1fr}
+}
 
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:var(--bg)}
@@ -164,7 +186,7 @@ select option{background:var(--panel2)}
 <!-- ═══ TOP BAR ═══ -->
 <div id="topbar">
   <h1>Distribution Fitting Tool</h1>
-  <span class="ver">v3.1 &nbsp;·&nbsp; TA CR – SIGMA</span>
+  <span class="ver">v3.2 &nbsp;·&nbsp; TA CR – SIGMA</span>
   <span class="author">Özgür Yurdakul &nbsp;|&nbsp; Faculty of Transport Engineering, University of Pardubice &nbsp;·&nbsp; CC BY-NC-SA 4.0</span>
 </div>
 
@@ -187,7 +209,7 @@ select option{background:var(--panel2)}
           style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
           onchange="loadFile(this.files[0])">
         <div class="uz-icon" style="font-size:16px;margin-bottom:3px">⬆</div>
-        <div class="uz-text" style="font-size:10px">Click or drag &amp; drop &nbsp;<strong>.txt</strong> / <strong>.csv</strong><br><small>One value per line · comma/space/tab separated</small></div>
+        <div class="uz-text" style="font-size:10px">Click or drag &amp; drop &nbsp;<strong>.txt</strong> / <strong>.csv</strong><br><small>One value per line · comma/space/tab separated · 24.6 or 24,6</small></div>
         <div class="uz-name" id="fname"></div>
       </label>
     </div>
@@ -214,9 +236,9 @@ select option{background:var(--panel2)}
         <option value="none">None (keep all)</option>
         <option value="mean3s">Mean ± 3σ  (isoutlier 'mean')</option>
         <option value="median">Median / MAD  (isoutlier 'median')</option>
-        <option value="iqr">IQR  (1.5 × IQR rule)</option>
-        <option value="grubbs">Grubbs test  (α = 0.05)</option>
-        <option value="gesd">GESD / Rosner  (α = 0.05)</option>
+        <option value="iqr">IQR, 1.5 × IQR  (isoutlier 'quartiles')</option>
+        <option value="grubbs">Grubbs, α = 0.05  (isoutlier 'grubbs')</option>
+        <option value="gesd">GESD, α = 0.05  (isoutlier 'gesd')</option>
       </select>
     </div>
     <div style="margin-bottom:7px">
@@ -233,7 +255,7 @@ select option{background:var(--panel2)}
         <option value="frechet">Fréchet (Type II Max)</option>
         <option value="loglogistic">Log-logistic</option>
       </select>
-      <div class="hint" id="distHint">LogNormal: μ_ln (log-space mean), σ_ln (log-space std)</div>
+      <div class="hint" id="distHint">μ_ln, σ_ln = mean and std of ln(x), as MATLAB fitdist (σ with n−1)</div>
     </div>
     <div style="margin-bottom:7px">
       <label>Histogram bin method</label>
@@ -260,8 +282,8 @@ select option{background:var(--panel2)}
       </select>
     </div>
     <div class="row2">
-      <div><label>X min (plot)</label><input type="number" id="xlimMin" value="0" step="any"></div>
-      <div><label>X max (plot)</label><input type="number" id="xlimMax" value="100" step="any"></div>
+      <div><label>X min (plot)</label><input type="number" id="xlimMin" value="" step="any" placeholder="auto"></div>
+      <div><label>X max (plot)</label><input type="number" id="xlimMax" value="" step="any" placeholder="auto"></div>
     </div>
     <div class="row2" style="margin-top:7px">
       <div><label>Y max — PDF</label><input type="number" id="ylimMax" value="" step="any" placeholder="auto"></div>
@@ -274,7 +296,7 @@ select option{background:var(--panel2)}
     <div class="sec-title">Inverse Probability</div>
     <label>Failure probability p</label>
     <div class="inv-row">
-      <input type="number" id="invProb" value="0.05" step="0.001" min="0.0001" max="0.9999">
+      <input type="number" id="invProb" value="0.05" step="any" min="0" max="1" title="0 = no line">
       <button class="btn btn-blue btn-sm" onclick="calcInverse()">Calc</button>
     </div>
     <div class="inv-result" id="invResult">Run analysis first</div>
@@ -285,6 +307,16 @@ select option{background:var(--panel2)}
     <button class="btn btn-green" id="btnRun" style="width:100%;justify-content:center;font-size:13px;padding:9px" onclick="runAnalysis()" disabled>
       ▶  Run Analysis
     </button>
+  </div>
+
+  <!-- Related tools -->
+  <div class="sec">
+    <div class="sec-title">Related Tools</div>
+    <a class="tool-link" href="https://ozguryurdakul.github.io/StatisticalTools/LHS_CorrelatedSampler.html" target="_blank" rel="noopener">
+      <span class="tl-icon">🎲</span>
+      <span><span class="tl-name">LHS Correlated Sampler</span><br><span class="tl-desc">Correlated Latin Hypercube Sampling</span></span>
+      <span class="tl-arrow">↗</span>
+    </a>
   </div>
 
   <!-- Acknowledgement -->
@@ -329,8 +361,8 @@ select option{background:var(--panel2)}
     <span class="gs-label">GoF Tests (α=0.05):</span>
     <div class="gc pend" id="gc-ks"><span class="gc-name">K–S</span><span class="gc-res">—</span><span class="gc-p">p=—</span></div>
     <div class="gc pend" id="gc-chi"><span class="gc-name">χ²</span><span class="gc-res">—</span><span class="gc-p">p=—</span></div>
-    <div class="gc pend" id="gc-lil"><span class="gc-name">Lilliefors</span><span class="gc-res">—</span><span class="gc-p">stat=—</span></div>
-    <div class="gc pend" id="gc-ad"><span class="gc-name">A–D</span><span class="gc-res">—</span><span class="gc-p">A²=—</span></div>
+    <div class="gc pend" id="gc-lil"><span class="gc-name">Lilliefors</span><span class="gc-res">—</span><span class="gc-p">p=—</span></div>
+    <div class="gc pend" id="gc-ad"><span class="gc-name">A–D</span><span class="gc-res">—</span><span class="gc-p">p=—</span></div>
   </div>
 
   <!-- tabs -->
@@ -371,7 +403,6 @@ select option{background:var(--panel2)}
           <div class="ph-empty" id="combPH"><div style="font-size:40px;opacity:.3">⬡</div><div>Upload data and run analysis</div></div>
           <canvas id="combChart" role="img" aria-label="Combined chart" style="display:none"></canvas>
         </div>
-        <div id="combInfo" style="margin-top:10px"></div>
       </div>
     </div>
   </div>
@@ -388,7 +419,8 @@ select option{background:var(--panel2)}
 
 Supported formats:
   • One value per line
-  • Space / tab / comma separated</div>
+  • Space / tab / comma / semicolon separated
+  • Decimal point or decimal comma (24.6 or 24,6)</div>
     </div>
   </div>
 
@@ -398,822 +430,1395 @@ Supported formats:
 
 
 <script>
+
 'use strict';
+/* ═══════════════════════════════════════════════════════════════════════
+   Distribution Fitting Tool — statistical core and user interface
+   • Estimators: Normal / LogNormal exactly as MATLAB fitdist (σ from the
+     unbiased variance, n−1); all other families by maximum likelihood.
+   • Outlier rules follow the definitions of MATLAB isoutlier.
+   • K–S and A–D p-values by parametric bootstrap (parameters re-estimated
+     in every replicate), so they stay valid although the parameters are
+     estimated from the same data.
+   ═══════════════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════ STATE ════════════════════════════════ */
-let rawData  = null;
-let fitResult= null;
-let charts   = {};   // pdfChart, cdfChart, combChart
+let rawData    = null;   // values as loaded (before outlier removal)
+let rawInfo    = null;   // parsing report of the loaded data
+let fitResult  = null;   // results of the last analysis
+let charts     = {};     // Chart.js instances: pdfChart, cdfChart, combChart
+let gofJob     = 0;      // id of the running bootstrap (a newer run cancels older ones)
+
+const VERSION    = 'v3.2';
+const ALPHA      = 0.05;
+const EXPORT_DPR = 3;    // PNG export resolution factor
 
 /* ═══════════════════════════════ DISTRIBUTION INFO ═══════════════════ */
+const DIST_NAMES = {normal:'Normal', lognormal:'LogNormal', weibull:'Weibull', gamma:'Gamma',
+  rayleigh:'Rayleigh', exponential:'Exponential', uniform:'Uniform', gumbel:'Gumbel (max)',
+  frechet:'Fréchet', loglogistic:'Log-logistic'};
 const DIST_HINTS = {
-  lognormal:   'μ_ln (log-space mean), σ_ln (log-space std) — fit by MLE on log(x)',
-  normal:      'μ (mean), σ (std dev) — fit by MLE',
-  weibull:     'k (shape), λ (scale) — fit by MLE (Newton-Raphson)',
-  gamma:       'α (shape), β (scale) — fit by MOM',
-  rayleigh:    'σ (scale, single param) — fit by MLE',
-  exponential: 'λ (rate = 1/mean) — fit by MLE',
-  uniform:     'a (min), b (max) — fit by MOM',
-  gumbel:      'μ (location), β (scale) — fit by MOM',
-  frechet:     'α (shape), s (scale) — fit by MOM',
-  loglogistic: 'α (scale), β (shape) — fit by MOM',
+  lognormal:   'μ_ln, σ_ln = mean and std of ln(x), as MATLAB fitdist (σ with n−1)',
+  normal:      'μ = mean, σ = std, as MATLAB fitdist (σ with n−1)',
+  weibull:     'k (shape), λ (scale) — maximum likelihood (MATLAB: B = k, A = λ)',
+  gamma:       'α (shape), β (scale) — maximum likelihood (MATLAB: a = α, b = β)',
+  rayleigh:    'σ (scale) — maximum likelihood (MATLAB: B = σ)',
+  exponential: 'λ (rate) — maximum likelihood (MATLAB: mu = 1/λ)',
+  uniform:     'a = min, b = max — maximum likelihood',
+  gumbel:      'μ (location), β (scale), largest values — maximum likelihood',
+  frechet:     'α (shape), s (scale) — maximum likelihood',
+  loglogistic: 'α (scale), β (shape) — maximum likelihood (MATLAB: mu = ln α, sigma = 1/β)',
 };
-const DIST_P1_LABELS = {
-  lognormal:'μ_ln', normal:'μ', weibull:'k (shape)', gamma:'α (shape)',
-  rayleigh:'σ (scale)', exponential:'λ (rate)', uniform:'a (min)',
-  gumbel:'μ (loc)', frechet:'α (shape)', loglogistic:'α (scale)',
-};
-const DIST_P2_LABELS = {
-  lognormal:'σ_ln', normal:'σ', weibull:'λ (scale)', gamma:'β (scale)',
-  rayleigh:'— (N/A)', exponential:'— (N/A)', uniform:'b (max)',
-  gumbel:'β (scale)', frechet:'s (scale)', loglogistic:'β (shape)',
-};
+const ESTIMATORS = {
+  normal:'μ = sample mean, σ = sample std (n−1), as MATLAB fitdist',
+  lognormal:'mean and std (n−1) of ln x, as MATLAB fitdist',
+  weibull:'maximum likelihood, as MATLAB fitdist', gamma:'maximum likelihood, as MATLAB fitdist',
+  rayleigh:'maximum likelihood, as MATLAB fitdist', exponential:'maximum likelihood, as MATLAB fitdist',
+  uniform:'maximum likelihood (a = min, b = max)', gumbel:'maximum likelihood (MATLAB fitdist "ExtremeValue" applied to −x)',
+  frechet:'maximum likelihood (Weibull fit of 1/x)', loglogistic:'maximum likelihood, as MATLAB fitdist'};
+const DIST_PARAM_COUNT = {normal:2, lognormal:2, weibull:2, gamma:2, rayleigh:1, exponential:1,
+  uniform:2, gumbel:2, frechet:2, loglogistic:2};
+const DIST_SUPPORT = {normal:'real', lognormal:'pos', weibull:'pos', gamma:'pos', rayleigh:'nonneg',
+  exponential:'nonneg', uniform:'real', gumbel:'real', frechet:'pos', loglogistic:'pos'};
+const DIST_PARAM_LABELS = {
+  normal:['μ (mean)','σ (std dev)'], lognormal:['μ_ln (log mean)','σ_ln (log std)'],
+  weibull:['k (shape)','λ (scale)'], gamma:['α (shape)','β (scale)'], rayleigh:['σ (scale)',null],
+  exponential:['λ (rate)',null], uniform:['a (min)','b (max)'], gumbel:['μ (location)','β (scale)'],
+  frechet:['α (shape)','s (scale)'], loglogistic:['α (scale)','β (shape)']};
+const OUTLIER_NAMES = {none:'none', mean3s:'mean ± 3 std (MATLAB isoutlier "mean")',
+  median:'median ± 3 scaled MAD (MATLAB isoutlier "median")',
+  iqr:'quartiles ± 1.5 IQR (MATLAB isoutlier "quartiles")',
+  grubbs:'Grubbs, α = 0.05 (MATLAB isoutlier "grubbs")',
+  gesd:'generalized ESD, α = 0.05 (MATLAB isoutlier "gesd")'};
+const BIN_NAMES = {fd:'Freedman–Diaconis', sqrt:'square root', sturges:'Sturges', rice:'Rice',
+  scott:'Scott', auto:'auto (max of Sturges and FD)'};
+
+function distParamCount(d){ return DIST_PARAM_COUNT[d] || 2; }
 
 function onDistChange(){
   const d=document.getElementById('distType').value;
   document.getElementById('distHint').textContent=DIST_HINTS[d]||'';
 }
 
-/* ═══════════════════════════════ MATH UTILS ═══════════════════════════ */
-const arrSum  = a=>a.reduce((s,x)=>s+x,0);
-const arrMean = a=>arrSum(a)/a.length;
-const arrMedian= a=>{const s=[...a].sort((x,y)=>x-y),m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2};
-const arrStd  = (a,ddof=1)=>{const m=arrMean(a);return Math.sqrt(a.reduce((s,x)=>s+(x-m)*(x-m),0)/Math.max(1,a.length-ddof))};
-const linspace = (lo,hi,n)=>{const a=[];for(let i=0;i<n;i++)a.push(lo+(hi-lo)*i/(n-1));return a};
-
-function erf(x){const t=1/(1+.3275911*Math.abs(x));const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-.284496736)*t+.254829592)*t*Math.exp(-x*x);return x<0?-y:y}
-function erfinv(x){const a=.147,l=Math.log(1-x*x),A=2/(Math.PI*a)+l/2;return Math.sign(x)*Math.sqrt(Math.sqrt(A*A-l/a)-A)}
-const normcdf = x=>0.5*(1+erf(x/Math.SQRT2));
-const norminv = p=>Math.SQRT2*erfinv(2*p-1);
-const normpdf = x=>Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI);
-
-/* Gamma function (Lanczos) */
-function gammaFn(z){
-  if(z<.5)return Math.PI/(Math.sin(Math.PI*z)*gammaFn(1-z));
-  z--;const g=7,c=[.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
-  let x=c[0];for(let i=1;i<g+2;i++)x+=c[i]/(z+i);
-  const t=z+g+.5;return Math.sqrt(2*Math.PI)*Math.pow(t,z+.5)*Math.exp(-t)*x;
+/* ═══════════════════════════════ FORMATTING ══════════════════════════ */
+// significant-digit formatting, so very small or very large data stay readable
+function fmt(v, sig){
+  sig = sig || 6;
+  if (v === Infinity) return '∞';
+  if (v === -Infinity) return '-∞';
+  if (typeof v !== 'number' || isNaN(v)) return '—';
+  if (v === 0) return '0';
+  const a = Math.abs(v);
+  let s;
+  if (a >= 1e-4 && a < 1e9) {
+    s = v.toPrecision(sig);
+    if (s.indexOf('e') >= 0) s = String(Number(s));
+    if (s.indexOf('.') >= 0) s = s.replace(/0+$/, '').replace(/\.$/, '');
+  } else {
+    s = v.toExponential(sig - 1).replace(/\.?0+e/, 'e');
+  }
+  return s;
 }
-const lgamma = z=>Math.log(Math.abs(gammaFn(z)));
+function fmtP(p){ if (!(p >= 0)) return '—'; return p < 0.001 ? '< 0.001' : p.toFixed(3); }
+function pEq(p){ return (p >= 0 && p < 0.001) ? 'p < 0.001' : 'p = ' + fmtP(p); }   // 'p = 0.123' or 'p < 0.001'
 
-function gamcdf_lower(x,a){if(x<=0)return 0;let s=1,t=1;for(let n=1;n<300;n++){t*=x/(a+n);s+=t;if(Math.abs(t)<1e-14*s)break}return Math.exp(-x+a*Math.log(x)-lgamma(a))*s/a}
-function gamcdf_upper(x,a){let b=x+1-a,c=1/1e-30,d=1/b,h=d;for(let i=1;i<300;i++){const an=-i*(i-a);b+=2;d=an*d+b;if(Math.abs(d)<1e-30)d=1e-30;c=b+an/c;if(Math.abs(c)<1e-30)c=1e-30;d=1/d;const del=d*c;h*=del;if(Math.abs(del-1)<1e-14)break}return Math.exp(-x+a*Math.log(x)-lgamma(a))*h}
-function gamcdf(x,a){if(x<=0)return 0;return x<a+1?gamcdf_lower(x,a):1-gamcdf_upper(x,a)}
-function gaminv(p,a){
-  if(p<=0)return 0;if(p>=1)return Infinity;
-  // Wilson-Hilferty initial guess (chi-sq approximation) — prevents Newton overshoot
-  const z=norminv(p);
-  let x=a*Math.pow(Math.max(1e-9,1-1/(9*a)+z/Math.sqrt(9*a)),3);
-  x=Math.max(1e-9,x);
-  for(let i=0;i<200;i++){
-    const Fx=gamcdf(x,a);
-    const fx=Math.exp((a-1)*Math.log(x)-x-lgamma(a));
-    if(fx<1e-300)break;
-    const dx=(Fx-p)/fx; x-=dx; if(x<=0)x=1e-10;
-    if(Math.abs(dx)<1e-10*Math.max(1,x))break;
+/* ═══════════════════════════════ ARRAY HELPERS ═══════════════════════ */
+// (no Math.min(...a) — spreading large arrays overflows the call stack)
+function arrSum(a){ let s=0; for (let i=0;i<a.length;i++) s+=a[i]; return s; }
+function arrMean(a){ return arrSum(a)/a.length; }
+function arrMin(a){ let m=Infinity;  for (let i=0;i<a.length;i++) if (a[i]<m) m=a[i]; return m; }
+function arrMax(a){ let m=-Infinity; for (let i=0;i<a.length;i++) if (a[i]>m) m=a[i]; return m; }
+function arrStd(a, ddof){
+  if (ddof === undefined) ddof = 1;
+  const m = arrMean(a); let s = 0;
+  for (let i=0;i<a.length;i++){ const d=a[i]-m; s+=d*d; }
+  return Math.sqrt(s/Math.max(1, a.length-ddof));
+}
+function sortNum(a){ return Array.from(Float64Array.from(a).sort()); }
+function arrMedian(a){ const s=sortNum(a), n=s.length, m=n>>1; return n%2 ? s[m] : (s[m-1]+s[m])/2; }
+// quantile of SORTED data as MATLAB prctile / quantile: sorted x(k) is the (k−0.5)/n quantile
+function quantile5(s, p){
+  const n=s.length, pos=n*p+0.5;
+  if (pos <= 1) return s[0];
+  if (pos >= n) return s[n-1];
+  const k=Math.floor(pos), f=pos-k;
+  return s[k-1] + f*(s[k]-s[k-1]);
+}
+function linspace(lo, hi, n){ const a=new Array(n); for (let i=0;i<n;i++) a[i]=lo+(hi-lo)*i/(n-1); return a; }
+
+/* ═══════════════════════════════ SPECIAL FUNCTIONS ═══════════════════ */
+const LN_SQRT_2PI = 0.9189385332046727;   // ln √(2π)
+const LN_SQRT_PI  = 0.5723649429247001;   // ln √π = ln Γ(1/2)
+const SQRT_2PI    = 2.5066282746310002;
+const EULER_GAMMA = 0.5772156649015329;
+const MAD_SCALE   = 1.482602218505602;    // 1/Φ⁻¹(3/4) = −1/(√2·erfcinv(3/2)), as MATLAB
+
+// ln Γ(z), Lanczos approximation evaluated in log form (no overflow for large z)
+const LANCZOS = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313,
+  -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6,
+  1.5056327351493116e-7];
+function lgamma(z){
+  if (z < 0.5) return Math.log(Math.PI/Math.abs(Math.sin(Math.PI*z))) - lgamma(1-z);
+  z -= 1;
+  let x = LANCZOS[0];
+  for (let i=1;i<9;i++) x += LANCZOS[i]/(z+i);
+  const t = z + 7.5;
+  return LN_SQRT_2PI + (z+0.5)*Math.log(t) - t + Math.log(x);
+}
+function gammaFn(z){
+  if (z < 0.5) return Math.PI/(Math.sin(Math.PI*z)*gammaFn(1-z));
+  return Math.exp(lgamma(z));
+}
+// ln Γ(a) − [(a−½)ln a − a + ln√(2π)] (Stirling series), accurate for a ≥ 10
+function lgammaCorr(a){
+  const f = 1/(a*a);
+  return (1/12 - f*(1/360 - f*(1/1260 - f*(1/1680 - f/1188))))/a;
+}
+// ln(1+t) − t without cancellation for small t
+function log1pmx(t){
+  if (Math.abs(t) < 0.5) {
+    let term = t, s = 0;
+    for (let k=2;k<300;k++){ term *= -t; const d = term/k; s += d; if (Math.abs(d) < 1e-17*Math.abs(s)) break; }
+    return s;
+  }
+  return Math.log1p(t) - t;
+}
+// x^a e^(−x) / Γ(a), accurate also for very large a
+function igamFac(a, x, lga){
+  if (a < 10) return Math.exp(a*Math.log(x) - x - (lga === undefined ? lgamma(a) : lga));
+  return Math.exp(a*log1pmx((x-a)/a) + 0.5*Math.log(a) - LN_SQRT_2PI - lgammaCorr(a));
+}
+// Temme's uniform asymptotic expansion, two terms (DiDonato & Morris 1986), for very large a near x ≈ a,
+// where the series / continued fraction would need of the order of 10·√a iterations.
+// Q(a,x) = ½·erfc(η·√(a/2)) + e^(−aη²/2)/√(2πa)·(C0(η) + C1(η)/a),  η²/2 = λ − 1 − ln λ,  λ = x/a
+const TEMME_C0 = [-1/3, 1/12, -2/135, 1/864, 1/2835, -139/777600, 1/25515, -571/261273600, -281/151559100,
+  163879/197522841600, -1.7665952736826078e-7, 6.707853543401498e-9];
+const TEMME_C1 = [-1/540, -1/288, 1/378, -77/77760, 1/4860, -1/2488320, -2743/151559100, 41969/5486745600,
+  -11/6823440, 47207/10158317568000, 1.378633446915721e-7, -5.752545603517705e-8];
+function polyEval(c, t){ let s = 0; for (let k=c.length-1;k>=0;k--) s = s*t + c[k]; return s; }
+function gammaPQTemme(a, x){
+  const m = (x-a)/a, eta = (m < 0 ? -1 : 1)*Math.sqrt(-2*log1pmx(m));
+  let c0, c1;
+  if (Math.abs(eta) < 0.3) { c0 = polyEval(TEMME_C0, eta); c1 = polyEval(TEMME_C1, eta); }   // Taylor series near η = 0
+  else { c0 = 1/m - 1/eta; c1 = 1/(eta*eta*eta) - 1/(m*m*m) - 1/(m*m) - 1/(12*m); }
+  const R = Math.exp(-0.5*a*eta*eta)/Math.sqrt(2*Math.PI*a)*(c0 + c1/a), s = eta*Math.sqrt(a/2);
+  if (s > 0) { const Q = 0.5*erfc(s) + R; return [1-Q, Q]; }
+  const P = 0.5*erfc(-s) - R;
+  return [P, 1-P];
+}
+// regularized incomplete gamma: returns [P(a,x), Q(a,x)] (series / Lentz continued fraction / Temme)
+function gammaPQ(a, x, lga){
+  if (!(x > 0)) return [0, 1];
+  if (x === Infinity) return [1, 0];
+  if (a >= 1e4 && Math.abs(x-a) < 0.3*a) return gammaPQTemme(a, x);   // relative error < 2e-11 there
+  const fac = igamFac(a, x, lga);
+  if (x < a+1) {
+    let ap = a, del = 1/a, sum = del;
+    for (let n=0;n<200000;n++){ ap += 1; del *= x/ap; sum += del; if (del < sum*1e-16) break; }
+    const P = fac*sum;
+    return [P, 1-P];
+  }
+  let b = x+1-a, c = 1e300, d = 1/b, h = d;
+  for (let i=1;i<200000;i++){
+    const an = -i*(i-a); b += 2;
+    d = an*d + b; if (Math.abs(d) < 1e-300) d = 1e-300;
+    c = b + an/c; if (Math.abs(c) < 1e-300) c = 1e-300;
+    d = 1/d; const del = d*c; h *= del;
+    if (Math.abs(del-1) < 1e-15) break;
+  }
+  const Q = fac*h;
+  return [1-Q, Q];
+}
+function gamcdf(x, a){ return gammaPQ(a, x)[0]; }          // P(a, x)
+function chi2sf(x, df){ return gammaPQ(df/2, x/2)[1]; }      // upper tail of χ²
+
+// error functions through P(½, x²): full relative accuracy also in the tails
+function erf(x){ if (isNaN(x)) return NaN; const q = gammaPQ(0.5, x*x, LN_SQRT_PI); return x >= 0 ? q[0] : -q[0]; }
+function erfc(x){ if (isNaN(x)) return NaN; const q = gammaPQ(0.5, x*x, LN_SQRT_PI); return x >= 0 ? q[1] : 1+q[0]; }
+function normcdf(z){ return 0.5*erfc(-z/Math.SQRT2); }
+function normsf(z){ return 0.5*erfc(z/Math.SQRT2); }
+function normpdf(z){ return Math.exp(-0.5*z*z)/SQRT_2PI; }
+// [Φ(z), 1 − Φ(z)] from a single incomplete-gamma evaluation
+function normCdfSf(z){ const q = gammaPQ(0.5, 0.5*z*z, LN_SQRT_PI); return z >= 0 ? [0.5+0.5*q[0], 0.5*q[1]] : [0.5*q[1], 0.5+0.5*q[0]]; }
+
+// standard normal quantile: Acklam's rational approximation + one Halley step (double precision)
+function norminv(p){
+  if (isNaN(p)) return NaN;
+  if (p <= 0) return -Infinity;
+  if (p >= 1) return Infinity;
+  const a=[-3.969683028665376e+01, 2.209460984245205e+02,-2.759285104469687e+02, 1.383577518672690e+02,-3.066479806614716e+01, 2.506628277459239e+00];
+  const b=[-5.447609879822406e+01, 1.615858368580409e+02,-1.556989798598866e+02, 6.680131188771972e+01,-1.328068155288572e+01];
+  const c=[-7.784894002430293e-03,-3.223964580411365e-01,-2.400758277161838e+00,-2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+  const d=[ 7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00];
+  const pl = 0.02425;
+  let x;
+  if (p < pl) {
+    const q = Math.sqrt(-2*Math.log(p));
+    x = (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  } else if (p <= 1-pl) {
+    const q = p-0.5, r = q*q;
+    x = (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+  } else {
+    const q = Math.sqrt(-2*Math.log1p(-p));
+    x = -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+  const e = (p < 0.5) ? normcdf(x) - p : (1-p) - normsf(x);   // Φ(x) − p without cancellation
+  const u = e*SQRT_2PI*Math.exp(0.5*x*x);
+  return x - u/(1 + 0.5*x*u);
+}
+
+// survival function of the Kolmogorov distribution, P(K > λ)
+function kolmogorovSF(lam){
+  if (!(lam > 0)) return 1;
+  if (lam < 1.18) {
+    const y = Math.exp(-Math.PI*Math.PI/(8*lam*lam));
+    const cdf = SQRT_2PI/lam*(y + Math.pow(y,9) + Math.pow(y,25) + Math.pow(y,49));
+    return Math.min(1, Math.max(0, 1-cdf));
+  }
+  const y = Math.exp(-2*lam*lam);
+  return Math.min(1, Math.max(0, 2*(y - Math.pow(y,4) + Math.pow(y,9) - Math.pow(y,16))));
+}
+
+// regularized incomplete beta I_x(a,b); y = 1 − x is passed separately for accuracy
+function betacf(a, b, x){
+  const FPMIN = 1e-300, qab = a+b, qap = a+1, qam = a-1;
+  let c = 1, d = 1 - qab*x/qap;
+  if (Math.abs(d) < FPMIN) d = FPMIN;
+  d = 1/d;
+  let h = d;
+  for (let m=1;m<=10000;m++){
+    const m2 = 2*m;
+    let aa = m*(b-m)*x/((qam+m2)*(a+m2));
+    d = 1 + aa*d; if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1 + aa/c; if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1/d; h *= d*c;
+    aa = -(a+m)*(qab+m)*x/((a+m2)*(qap+m2));
+    d = 1 + aa*d; if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1 + aa/c; if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1/d;
+    const del = d*c; h *= del;
+    if (Math.abs(del-1) < 1e-15) break;
+  }
+  return h;
+}
+function betaincReg(x, y, a, b){
+  if (x <= 0) return 0;
+  if (y <= 0) return 1;
+  const lbt = lgamma(a+b) - lgamma(a) - lgamma(b) + a*Math.log(x) + b*Math.log(y);
+  if (x < (a+1)/(a+b+2)) return Math.exp(lbt)*betacf(a, b, x)/a;
+  return 1 - Math.exp(lbt)*betacf(b, a, y)/b;
+}
+// Student t: upper tail P(T > t), density, and upper-tail quantile
+function tsf(t, df){
+  if (t === Infinity) return 0;
+  if (t === -Infinity) return 1;
+  const t2 = t*t, half = 0.5*betaincReg(df/(df+t2), t2/(df+t2), df/2, 0.5);
+  return t >= 0 ? half : 1-half;
+}
+function tpdf(t, df){
+  return Math.exp(lgamma((df+1)/2) - lgamma(df/2) - 0.5*Math.log(df*Math.PI) - (df+1)/2*Math.log1p(t*t/df));
+}
+function tinvUpper(q, df){   // t such that P(T > t) = q
+  if (!(q > 0)) return Infinity;
+  if (q >= 1) return -Infinity;
+  if (q > 0.5) return -tinvUpper(1-q, df);
+  if (q === 0.5) return 0;
+  if (df === 1) return 1/Math.tan(Math.PI*q);
+  if (df === 2) return (1-2*q)/Math.sqrt(2*q*(1-q));
+  const z = -norminv(q);
+  let t = z + (z*z*z+z)/(4*df) + (5*Math.pow(z,5)+16*z*z*z+3*z)/(96*df*df);
+  if (!(t > 0) || !isFinite(t)) t = z;
+  let lo = 0, hi = Infinity;
+  for (let it=0; it<400; it++){
+    const f = tsf(t, df) - q;                 // decreasing in t
+    if (f === 0) break;
+    if (f > 0) lo = t; else hi = t;
+    let tn = t + f/tpdf(t, df);               // Newton step
+    if (!(tn > lo && tn < hi) || !isFinite(tn)) tn = (hi === Infinity) ? 2*t : 0.5*(lo+hi);
+    if (Math.abs(tn-t) <= 1e-14*t) { t = tn; break; }
+    t = tn;
+  }
+  return t;
+}
+
+// digamma, trigamma and ln(a) − ψ(a) (asymptotic series after upward recurrence)
+function digamma(x){
+  let r = 0;
+  while (x < 12) { r -= 1/x; x += 1; }
+  const f = 1/(x*x);
+  return r + Math.log(x) - 0.5/x - f*(1/12 - f*(1/120 - f*(1/252 - f*(1/240 - f*(1/132 - f*(691/32760 - f/12))))));
+}
+function trigamma(x){
+  let r = 0;
+  while (x < 12) { r += 1/(x*x); x += 1; }
+  const f = 1/(x*x);
+  return r + 1/x + f/2 + (f/x)*(1/6 - f*(1/30 - f*(1/42 - f*(1/30 - f*(5/66 - f*(691/2730 - f*7/6))))));
+}
+function lnMinusDigamma(a){
+  let add = 0, x = a;
+  while (x < 12) { add += 1/x; x += 1; }
+  const f = 1/(x*x);
+  const tail = 0.5/x + f*(1/12 - f*(1/120 - f*(1/252 - f*(1/240 - f*(1/132 - f*(691/32760 - f/12))))));
+  return tail - Math.log(x/a) + add;
+}
+
+// quantile of the standard gamma distribution Gamma(a, 1): safeguarded Newton with bracketing
+function gaminv(p, a){
+  if (!(p > 0)) return 0;
+  if (!(p < 1)) return Infinity;
+  const lga = lgamma(a), upper = p > 0.5;
+  const f = x => { const pq = gammaPQ(a, x, lga); return upper ? (1-p) - pq[1] : pq[0] - p; };
+  let x;
+  if (a >= 1) {
+    const t = 1 - 1/(9*a) + norminv(p)/(3*Math.sqrt(a));   // Wilson–Hilferty
+    x = t > 0 ? a*t*t*t : NaN;
+  }
+  if (!(x > 0) || !isFinite(x)) x = Math.exp((Math.log(p) + Math.log(a) + lga)/a);  // P ≈ x^a/(aΓ(a))
+  if (!(x > 0) || !isFinite(x)) x = a;
+  let lo = 0, hi = Infinity;
+  for (let it=0; it<400; it++){
+    const fx = f(x);
+    if (fx === 0) break;
+    if (fx < 0) lo = x; else hi = x;
+    let xn = x - fx/(igamFac(a, x, lga)/x);
+    // fallback: geometric bisection (√lo·√hi — the product lo·hi would underflow for tiny quantiles)
+    if (!(xn > lo && xn < hi) || !isFinite(xn)) xn = (hi === Infinity) ? 4*x : (lo === 0 ? hi/4 : Math.sqrt(lo)*Math.sqrt(hi));
+    if (Math.abs(xn-x) <= 1e-14*x || (hi < Infinity && hi-lo <= 1e-15*hi)) { x = xn; break; }
+    x = xn;
   }
   return x;
 }
 
 /* ═══════════════════════════════ DISTRIBUTION FUNCTIONS ══════════════ */
-function distPDF(x,d,p1,p2){
-  if(d==='normal')    return normpdf((x-p1)/p2)/p2;
-  if(d==='lognormal') return x<=0?0:Math.exp(-0.5*((Math.log(x)-p1)/p2)*((Math.log(x)-p1)/p2))/(x*p2*Math.sqrt(2*Math.PI));
-  if(d==='weibull')   {if(x<=0)return 0;const z=x/p2;return(p1/p2)*Math.pow(z,p1-1)*Math.exp(-Math.pow(z,p1))}
-  if(d==='gamma')     {if(x<=0)return 0;return Math.exp((p1-1)*Math.log(x/p2)-x/p2-lgamma(p1))/p2}
-  if(d==='rayleigh')  return x<=0?0:(x/(p1*p1))*Math.exp(-(x*x)/(2*p1*p1));
-  if(d==='exponential')return x<0?0:p1*Math.exp(-p1*x);
-  if(d==='uniform')   return(x>=p1&&x<=p2)?1/(p2-p1):0;
-  if(d==='gumbel')    {const z=(x-p1)/p2;return Math.exp(-z-Math.exp(-z))/p2}
-  if(d==='frechet')   {if(x<=0)return 0;const z=p2/x;return(p1/p2)*Math.pow(z,p1+1)*Math.exp(-Math.pow(z,p1))}
-  if(d==='loglogistic'){if(x<=0)return 0;const z=Math.pow(x/p1,p2);return(p2/p1)*Math.pow(x/p1,p2-1)/((1+z)*(1+z))}
-  return 0;
-}
-function distCDF(x,d,p1,p2){
-  if(d==='normal')    return normcdf((x-p1)/p2);
-  if(d==='lognormal') return x<=0?0:normcdf((Math.log(x)-p1)/p2);
-  if(d==='weibull')   return x<=0?0:1-Math.exp(-Math.pow(x/p2,p1));
-  if(d==='gamma')     return gamcdf(x/p2,p1);
-  if(d==='rayleigh')  return x<=0?0:1-Math.exp(-(x*x)/(2*p1*p1));
-  if(d==='exponential')return x<0?0:1-Math.exp(-p1*x);
-  if(d==='uniform')   return x<p1?0:x>p2?1:(x-p1)/(p2-p1);
-  if(d==='gumbel')    return Math.exp(-Math.exp(-(x-p1)/p2));
-  if(d==='frechet')   return x<=0?0:Math.exp(-Math.pow(p2/x,p1));
-  if(d==='loglogistic'){if(x<=0)return 0;const z=Math.pow(x/p1,p2);return z/(1+z)}
-  return 0;
-}
-function distICDF(p,d,p1,p2){
-  p=Math.max(1e-10,Math.min(1-1e-10,p));
-  if(d==='normal')     return p1+p2*norminv(p);
-  if(d==='lognormal')  return Math.exp(p1+p2*norminv(p));
-  if(d==='weibull')    return p2*Math.pow(-Math.log(1-p),1/p1);
-  if(d==='gamma')      return gaminv(p,p1)*p2;
-  if(d==='rayleigh')   return p1*Math.sqrt(-2*Math.log(1-p));
-  if(d==='exponential')return -Math.log(1-p)/p1;
-  if(d==='uniform')    return p1+p*(p2-p1);
-  if(d==='gumbel')     return p1-p2*Math.log(-Math.log(p));
-  if(d==='frechet')    return p2/Math.pow(-Math.log(p),1/p1);
-  if(d==='loglogistic'){const z=p/(1-p);return p1*Math.pow(z,1/p2)}
+function log1pexp(t){ return t > 0 ? t + Math.log1p(Math.exp(-t)) : Math.log1p(Math.exp(t)); }
+
+function distPDF(x, d, p1, p2){
+  if (isNaN(x)) return NaN;
+  switch (d) {
+    case 'normal':      return normpdf((x-p1)/p2)/p2;
+    case 'lognormal':   { if (x <= 0) return 0; return normpdf((Math.log(x)-p1)/p2)/(x*p2); }
+    case 'weibull':     { if (x <= 0) return 0; const lz = Math.log(x/p2); return (p1/p2)*Math.exp((p1-1)*lz - Math.exp(p1*lz)); }
+    case 'gamma':       { if (x <= 0) return 0; return igamFac(p1, x/p2)/x; }
+    case 'rayleigh':    { if (x < 0) return 0; return x/(p1*p1)*Math.exp(-x*x/(2*p1*p1)); }
+    case 'exponential': return x < 0 ? 0 : p1*Math.exp(-p1*x);
+    case 'uniform':     return (x >= p1 && x <= p2) ? 1/(p2-p1) : 0;
+    case 'gumbel':      { const z = (x-p1)/p2; return Math.exp(-z - Math.exp(-z))/p2; }
+    case 'frechet':     { if (x <= 0) return 0; const lz = Math.log(p2/x); return (p1/p2)*Math.exp((p1+1)*lz - Math.exp(p1*lz)); }
+    case 'loglogistic': { if (x <= 0) return 0; const lz = Math.log(x/p1); return (p2/p1)*Math.exp((p2-1)*lz - 2*log1pexp(p2*lz)); }
+  }
   return NaN;
 }
-function distStats(d,p1,p2){
-  if(d==='normal')    return{mu:p1,sig:p2};
-  if(d==='lognormal'){const mu=Math.exp(p1+p2*p2/2);return{mu,sig:Math.sqrt((Math.exp(p2*p2)-1)*Math.exp(2*p1+p2*p2))}}
-  if(d==='weibull')  {const mu=p2*gammaFn(1+1/p1);return{mu,sig:p2*Math.sqrt(Math.max(0,gammaFn(1+2/p1)-Math.pow(gammaFn(1+1/p1),2)))}}
-  if(d==='gamma')    return{mu:p1*p2,sig:Math.sqrt(p1)*p2};
-  if(d==='rayleigh') return{mu:p1*Math.sqrt(Math.PI/2),sig:p1*Math.sqrt((4-Math.PI)/2)};
-  if(d==='exponential')return{mu:1/p1,sig:1/p1};
-  if(d==='uniform')  return{mu:(p1+p2)/2,sig:(p2-p1)/Math.sqrt(12)};
-  if(d==='gumbel')   return{mu:p1+0.5772*p2,sig:p2*Math.PI/Math.sqrt(6)};
-  if(d==='frechet')  {const mu=p1>1?p2*gammaFn(1-1/p1):Infinity;const sig=p1>2?p2*Math.sqrt(gammaFn(1-2/p1)-Math.pow(gammaFn(1-1/p1),2)):Infinity;return{mu,sig}}
-  if(d==='loglogistic')return{mu:p1>1?p1*Math.PI/p2/Math.sin(Math.PI/p2):Infinity,sig:NaN};
-  return{mu:NaN,sig:NaN};
+function distCDF(x, d, p1, p2){
+  if (isNaN(x)) return NaN;
+  switch (d) {
+    case 'normal':      return normcdf((x-p1)/p2);
+    case 'lognormal':   return x <= 0 ? 0 : normcdf((Math.log(x)-p1)/p2);
+    case 'weibull':     return x <= 0 ? 0 : -Math.expm1(-Math.pow(x/p2, p1));
+    case 'gamma':       return x <= 0 ? 0 : gammaPQ(p1, x/p2)[0];
+    case 'rayleigh':    return x <= 0 ? 0 : -Math.expm1(-x*x/(2*p1*p1));
+    case 'exponential': return x <= 0 ? 0 : -Math.expm1(-p1*x);
+    case 'uniform':     return x <= p1 ? 0 : x >= p2 ? 1 : (x-p1)/(p2-p1);
+    case 'gumbel':      return Math.exp(-Math.exp(-(x-p1)/p2));
+    case 'frechet':     return x <= 0 ? 0 : Math.exp(-Math.pow(p2/x, p1));
+    case 'loglogistic': return x <= 0 ? 0 : 1/(1 + Math.exp(-p2*Math.log(x/p1)));
+  }
+  return NaN;
+}
+// upper tail 1 − F(x), computed directly for accuracy in the upper tail
+function distSF(x, d, p1, p2){
+  if (isNaN(x)) return NaN;
+  switch (d) {
+    case 'normal':      return normsf((x-p1)/p2);
+    case 'lognormal':   return x <= 0 ? 1 : normsf((Math.log(x)-p1)/p2);
+    case 'weibull':     return x <= 0 ? 1 : Math.exp(-Math.pow(x/p2, p1));
+    case 'gamma':       return x <= 0 ? 1 : gammaPQ(p1, x/p2)[1];
+    case 'rayleigh':    return x <= 0 ? 1 : Math.exp(-x*x/(2*p1*p1));
+    case 'exponential': return x <= 0 ? 1 : Math.exp(-p1*x);
+    case 'uniform':     return x <= p1 ? 1 : x >= p2 ? 0 : (p2-x)/(p2-p1);
+    case 'gumbel':      return -Math.expm1(-Math.exp(-(x-p1)/p2));
+    case 'frechet':     return x <= 0 ? 1 : -Math.expm1(-Math.pow(p2/x, p1));
+    case 'loglogistic': return x <= 0 ? 1 : 1/(1 + Math.exp(p2*Math.log(x/p1)));
+  }
+  return NaN;
+}
+function distICDF(p, d, p1, p2){
+  if (isNaN(p)) return NaN;
+  if (p <= 0) return (d === 'normal' || d === 'gumbel') ? -Infinity : (d === 'uniform' ? p1 : 0);
+  if (p >= 1) return d === 'uniform' ? p2 : Infinity;
+  switch (d) {
+    case 'normal':      return p1 + p2*norminv(p);
+    case 'lognormal':   return Math.exp(p1 + p2*norminv(p));
+    case 'weibull':     return p2*Math.pow(-Math.log1p(-p), 1/p1);
+    case 'gamma':       return p2*gaminv(p, p1);
+    case 'rayleigh':    return p1*Math.sqrt(-2*Math.log1p(-p));
+    case 'exponential': return -Math.log1p(-p)/p1;
+    case 'uniform':     return p1 + p*(p2-p1);
+    case 'gumbel':      return p1 - p2*Math.log(-Math.log(p));
+    case 'frechet':     return p2*Math.pow(-Math.log(p), -1/p1);
+    case 'loglogistic': return p1*Math.exp(Math.log(p/(1-p))/p2);
+  }
+  return NaN;
+}
+// mean and standard deviation of the fitted distribution (∞ where the moment does not exist)
+function distStats(d, p1, p2){
+  switch (d) {
+    case 'normal':      return {mu:p1, sig:p2};
+    case 'lognormal':   { const mu = Math.exp(p1 + p2*p2/2); return {mu, sig:mu*Math.sqrt(Math.expm1(p2*p2))}; }
+    case 'weibull':     { const g1 = gammaFn(1+1/p1), g2 = gammaFn(1+2/p1); return {mu:p2*g1, sig:p2*Math.sqrt(Math.max(0, g2-g1*g1))}; }
+    case 'gamma':       return {mu:p1*p2, sig:Math.sqrt(p1)*p2};
+    case 'rayleigh':    return {mu:p1*Math.sqrt(Math.PI/2), sig:p1*Math.sqrt((4-Math.PI)/2)};
+    case 'exponential': return {mu:1/p1, sig:1/p1};
+    case 'uniform':     return {mu:(p1+p2)/2, sig:(p2-p1)/Math.sqrt(12)};
+    case 'gumbel':      return {mu:p1 + EULER_GAMMA*p2, sig:p2*Math.PI/Math.sqrt(6)};
+    case 'frechet': {
+      const mu = p1 > 1 ? p2*gammaFn(1-1/p1) : Infinity;
+      const sig = p1 > 2 ? p2*Math.sqrt(Math.max(0, gammaFn(1-2/p1) - Math.pow(gammaFn(1-1/p1), 2))) : Infinity;
+      return {mu, sig};
+    }
+    case 'loglogistic': {   // α = p1 (scale), β = p2 (shape); mean needs β > 1, variance β > 2
+      const b = Math.PI/p2;
+      const mu = p2 > 1 ? p1*b/Math.sin(b) : Infinity;
+      const sig = p2 > 2 ? p1*Math.sqrt(Math.max(0, 2*b/Math.sin(2*b) - (b*b)/(Math.sin(b)*Math.sin(b)))) : Infinity;
+      return {mu, sig};
+    }
+  }
+  return {mu:NaN, sig:NaN};
+}
+function distMode(d, p1, p2){
+  switch (d) {
+    case 'normal':      return p1;
+    case 'lognormal':   return Math.exp(p1 - p2*p2);
+    case 'weibull':     return p1 > 1 ? p2*Math.pow((p1-1)/p1, 1/p1) : 0;
+    case 'gamma':       return p1 > 1 ? (p1-1)*p2 : 0;
+    case 'rayleigh':    return p1;
+    case 'exponential': return 0;
+    case 'uniform':     return (p1+p2)/2;   // every value is a mode; midpoint by convention
+    case 'gumbel':      return p1;
+    case 'frechet':     return p2*Math.pow(p1/(p1+1), 1/p1);
+    case 'loglogistic': return p2 > 1 ? p1*Math.pow((p2-1)/(p2+1), 1/p2) : 0;
+  }
+  return NaN;
 }
 
 /* ═══════════════════════════════ FITTING ═════════════════════════════ */
-function fitDist(arr, d){
-  const n=arr.length, m=arrMean(arr), s=arrStd(arr), med=arrMedian(arr);
-  let p1,p2;
-
-  if(d==='normal')    {p1=m;p2=s}
-  else if(d==='lognormal'){
-    const logs=arr.map(x=>Math.log(Math.max(x,1e-300)));
-    p1=arrMean(logs);p2=arrStd(logs);
+// Weibull MLE: profile equation in k, solved on data scaled by max(x) (no overflow of x^k)
+function fitWeibullMLE(x){
+  const n = x.length, xmax = arrMax(x);
+  const ly = new Float64Array(n);
+  let mly = 0;
+  for (let i=0;i<n;i++){ ly[i] = Math.log(x[i]/xmax); mly += ly[i]; }
+  mly /= n;
+  let sd = 0; for (let i=0;i<n;i++) sd += (ly[i]-mly)*(ly[i]-mly);
+  sd = Math.sqrt(sd/Math.max(1, n-1));
+  if (!(sd > 0)) return [NaN, NaN];
+  let k = Math.PI/(Math.sqrt(6)*sd);                   // Menon's estimate as starting value
+  let lo = 0, hi = Infinity;
+  for (let it=0; it<300; it++){
+    let s0 = 0, s1 = 0, s2 = 0;
+    for (let i=0;i<n;i++){ const w = Math.exp(k*ly[i]); s0 += w; s1 += w*ly[i]; s2 += w*ly[i]*ly[i]; }
+    const m1 = s1/s0, h = m1 - 1/k - mly, dh = (s2/s0 - m1*m1) + 1/(k*k);   // h increasing in k
+    if (h === 0) break;
+    if (h > 0) hi = k; else lo = k;
+    let kn = k - h/dh;
+    if (!(kn > lo && kn < hi) || !isFinite(kn)) kn = (hi === Infinity) ? 2*k : 0.5*(lo+hi);
+    if (Math.abs(kn-k) <= 1e-13*k) { k = kn; break; }
+    k = kn;
   }
-  else if(d==='weibull'){
-    // MLE via Newton-Raphson, initialised with Menon's estimator (stable for low CoV)
-    const lx=arr.map(x=>Math.log(Math.max(x,1e-300)));
-    const lstd=arrStd(lx);
-    let k=lstd>0?Math.PI/(Math.sqrt(6)*lstd):1;   // Menon estimator
-    k=Math.max(0.05,Math.min(200,k));
-    for(let it=0;it<100;it++){
-      const xk=arr.map(x=>Math.pow(x,k));
-      const s1=arrSum(xk)/n;
-      const s2=arrSum(xk.map((v,i)=>v*lx[i]))/n;
-      const s3=arrMean(lx);
-      const s4=arrSum(xk.map((v,i)=>v*lx[i]*lx[i]))/n;
-      if(!isFinite(s1)||s1<=0){break;}
-      const f=1/k+s3-s2/s1;
-      const df=-1/(k*k)-((s1*s4-s2*s2)/(s1*s1));
-      const dk=f/df; k-=dk;
-      if(k<=0)k=0.01; if(k>500)k=500;
-      if(Math.abs(dk)<1e-10)break;
+  let s0 = 0; for (let i=0;i<n;i++) s0 += Math.exp(k*ly[i]);
+  return [k, xmax*Math.pow(s0/n, 1/k)];
+}
+// Gamma MLE: solve ln α − ψ(α) = ln(mean x) − mean(ln x)
+function fitGammaMLE(x){
+  const n = x.length, m = arrMean(x);
+  let s = 0; for (let i=0;i<n;i++) s -= Math.log1p((x[i]-m)/m);
+  s /= n;
+  if (!(s > 0)) return [NaN, NaN];
+  let a = (3 - s + Math.sqrt((s-3)*(s-3) + 24*s))/(12*s);   // Minka's starting value
+  for (let it=0; it<200; it++){
+    const f = lnMinusDigamma(a) - s, df = 1/a - trigamma(a);
+    let an = a - f/df;
+    if (!(an > 0) || !isFinite(an)) an = a/2;
+    if (Math.abs(an-a) <= 1e-14*a) { a = an; break; }
+    a = an;
+  }
+  return [a, m/a];
+}
+// Gumbel (largest values) MLE: β solves β = mean(x) − Σx·e^(−x/β)/Σe^(−x/β); μ follows
+function fitGumbelMLE(x){
+  const n = x.length, m = arrMean(x), xmin = arrMin(x), sd = arrStd(x);
+  if (!(sd > 0)) return [NaN, NaN];
+  let b = sd*Math.sqrt(6)/Math.PI, lo = 0, hi = Infinity;
+  for (let it=0; it<300; it++){
+    let sw = 0, sdw = 0, sddw = 0;
+    for (let i=0;i<n;i++){ const dd = x[i]-xmin, w = Math.exp(-dd/b); sw += w; sdw += dd*w; sddw += dd*dd*w; }
+    const mw = sdw/sw, vw = Math.max(0, sddw/sw - mw*mw);
+    const g = (m - xmin) - mw - b, dg = -vw/(b*b) - 1;   // g decreasing in β
+    if (g === 0) break;
+    if (g > 0) lo = b; else hi = b;
+    let bn = b - g/dg;
+    if (!(bn > lo && bn < hi) || !isFinite(bn)) bn = (hi === Infinity) ? 2*b : 0.5*(lo+hi);
+    if (Math.abs(bn-b) <= 1e-14*b) { b = bn; break; }
+    b = bn;
+  }
+  let sw = 0; for (let i=0;i<n;i++) sw += Math.exp(-(x[i]-xmin)/b);
+  return [xmin - b*Math.log(sw/n), b];
+}
+// logistic(μ, s) MLE by damped Newton (used for log-logistic on ln x)
+function logisticLL(y, mu, s){
+  let L = -y.length*Math.log(s);
+  for (let i=0;i<y.length;i++){ const z = (y[i]-mu)/s; L += -z - 2*log1pexp(-z); }
+  return L;
+}
+function fitLogisticMLE(y){
+  const n = y.length;
+  let mu = arrMean(y), s = arrStd(y)*Math.sqrt(3)/Math.PI;
+  if (!(s > 0)) return [NaN, NaN];
+  let L = logisticLL(y, mu, s);
+  for (let it=0; it<300; it++){
+    let g1 = 0, g2 = 0, h11 = 0, h12 = 0, h22 = 0;
+    for (let i=0;i<n;i++){
+      const z = (y[i]-mu)/s, u = Math.tanh(z/2), v = 1-u*u;
+      g1 += u; g2 += z*u - 1; h11 += v; h12 += u + 0.5*z*v; h22 += 2*z*u - 1 + 0.5*z*z*v;
     }
-    p1=k; p2=Math.pow(arrSum(arr.map(x=>Math.pow(x,k)))/n,1/k);
+    const G0 = g1/s, G1 = g2/s;
+    const H00 = -h11/(2*s*s), H01 = -h12/(s*s), H11 = -h22/(s*s);
+    const det = H00*H11 - H01*H01;
+    let d0, d1;
+    if (H00 < 0 && det > 0) { d0 = -(H11*G0 - H01*G1)/det; d1 = -(H00*G1 - H01*G0)/det; }
+    else { d0 = G0*s*s/n; d1 = G1*s*s/n; }                 // fallback: gradient ascent
+    let step = 1, accepted = false;
+    for (let k=0;k<60;k++){
+      const mu2 = mu + step*d0, s2 = s + step*d1;
+      if (s2 > 0) {
+        const L2 = logisticLL(y, mu2, s2);
+        if (L2 >= L - 1e-13*Math.abs(L)) { mu = mu2; s = s2; L = L2; accepted = true; break; }
+      }
+      step /= 2;
+    }
+    if (!accepted) break;
+    if (Math.abs(step*d0) <= 1e-14*(Math.abs(mu)+s) && Math.abs(step*d1) <= 1e-14*s) break;
   }
-  else if(d==='gamma')   {const v=s*s;p1=m*m/v;p2=v/m}
-  else if(d==='rayleigh'){p1=Math.sqrt(arrSum(arr.map(x=>x*x))/(2*n));p2=NaN}
-  else if(d==='exponential'){p1=1/m;p2=NaN}
-  else if(d==='uniform'){p1=Math.min(...arr);p2=Math.max(...arr)}
-  else if(d==='gumbel'){p2=s*Math.sqrt(6)/Math.PI;p1=m-0.5772*p2}
-  else if(d==='frechet'){
-    // MOM: shape from log-variance, scale from median relationship
-    // Fréchet: median = s·(ln2)^(-1/α)  →  s = median·(ln2)^(1/α)
-    const lx=arr.map(x=>Math.log(Math.max(x,1e-300)));
-    const ls=arrStd(lx);
-    const a=Math.max(0.1,1/ls);
-    p1=a; p2=med*Math.pow(Math.log(2),1/a);
+  return [mu, s];
+}
+function fitParams(x, d){
+  switch (d) {
+    case 'normal':      return [arrMean(x), arrStd(x)];
+    case 'lognormal':   { const l = x.map(v => Math.log(v)); return [arrMean(l), arrStd(l)]; }
+    case 'weibull':     return fitWeibullMLE(x);
+    case 'gamma':       return fitGammaMLE(x);
+    case 'rayleigh':    { let s = 0; for (let i=0;i<x.length;i++) s += x[i]*x[i]; return [Math.sqrt(s/(2*x.length)), NaN]; }
+    case 'exponential': return [1/arrMean(x), NaN];
+    case 'uniform':     return [arrMin(x), arrMax(x)];
+    case 'gumbel':      return fitGumbelMLE(x);
+    case 'frechet':     { const w = fitWeibullMLE(x.map(v => 1/v)); return [w[0], 1/w[1]]; }   // 1/X ~ Weibull(α, 1/s)
+    case 'loglogistic': { const r = fitLogisticMLE(x.map(v => Math.log(v))); return [Math.exp(r[0]), 1/r[1]]; }
   }
-  else if(d==='loglogistic'){
-    const lx=arr.map(x=>Math.log(Math.max(x,1e-300)));
-    const lm=arrMean(lx), ls=arrStd(lx);
-    p2=Math.PI/Math.sqrt(3)/ls; p1=Math.exp(lm);
+  return [NaN, NaN];
+}
+// parameters must be finite and inside the parameter space of the family
+function fitIsValid(d, p1, p2){
+  const one = distParamCount(d) === 1;
+  if (!isFinite(p1) || (!one && !isFinite(p2))) return false;
+  switch (d) {
+    case 'normal': case 'lognormal': case 'gumbel': return p2 > 0;   // location may be any real
+    case 'uniform': return p2 > p1;
+    default: return p1 > 0 && (one || p2 > 0);
   }
-  else{p1=m;p2=s}
+}
+function makeFit(d, p1, p2){
+  const st = distStats(d, p1, p2);
+  const fit = {dist:d, p1, p2, meanFit:st.mu, stdFit:st.sig,
+    pdf:x => distPDF(x, d, p1, p2), cdf:x => distCDF(x, d, p1, p2),
+    sf:x => distSF(x, d, p1, p2), icdf:p => distICDF(p, d, p1, p2)};
+  fit.cdfsf = x => [fit.cdf(x), fit.sf(x)];      // [F(x), 1 − F(x)], used by the K–S / A–D statistics
+  if (d === 'normal') fit.cdfsf = x => normCdfSf((x-p1)/p2);
+  if (d === 'lognormal') fit.cdfsf = x => x <= 0 ? [0, 1] : normCdfSf((Math.log(x)-p1)/p2);
+  if (d === 'gamma') {   // cache ln Γ(α); one incomplete-gamma call gives both tails
+    const lga = lgamma(p1);
+    fit.pdf = x => x <= 0 ? 0 : igamFac(p1, x/p2, lga)/x;
+    fit.cdf = x => x <= 0 ? 0 : gammaPQ(p1, x/p2, lga)[0];
+    fit.sf  = x => x <= 0 ? 1 : gammaPQ(p1, x/p2, lga)[1];
+    fit.cdfsf = x => x <= 0 ? [0, 1] : gammaPQ(p1, x/p2, lga);
+  }
+  return fit;
+}
+function fitDist(arr, d){ const p = fitParams(arr, d); return makeFit(d, p[0], p[1]); }
 
-  const st=distStats(d,p1,p2);
-  return{p1,p2,meanFit:st.mu,stdFit:st.sig,
-    pdf:x=>distPDF(x,d,p1,p2),
-    cdf:x=>distCDF(x,d,p1,p2),
-    icdf:p=>distICDF(p,d,p1,p2)};
+// data checks before fitting
+function validateForDist(x, d){
+  if (x.length < 5) return 'At least 5 values are needed after outlier removal.';
+  const mn = arrMin(x), mx = arrMax(x);
+  if (!(mx > mn)) return 'All values are identical — no distribution can be fitted.';
+  const sup = DIST_SUPPORT[d];
+  if (sup === 'pos' && mn <= 0) {
+    const k = x.filter(v => v <= 0).length;
+    return `${DIST_NAMES[d]} needs all values > 0, but ${k} value(s) are ≤ 0 (min = ${fmt(mn)}). Choose another distribution or check the data.`;
+  }
+  if (sup === 'nonneg' && mn < 0) {
+    const k = x.filter(v => v < 0).length;
+    return `${DIST_NAMES[d]} needs all values ≥ 0, but ${k} value(s) are negative (min = ${fmt(mn)}). Choose another distribution or check the data.`;
+  }
+  return null;
 }
 
 /* ═══════════════════════════════ OUTLIERS ════════════════════════════ */
-function detectOutliers(arr, method){
-  const n=arr.length;
-  if(method==='none') return new Array(n).fill(false);
-  if(method==='mean3s'){const m=arrMean(arr),s=arrStd(arr);return arr.map(x=>Math.abs(x-m)>3*s)}
-  if(method==='median'){
-    const med=arrMedian(arr);
-    const mad=arrMedian(arr.map(x=>Math.abs(x-med)))*1.4826;
-    if(mad===0)return new Array(n).fill(false);
-    return arr.map(x=>Math.abs(x-med)/mad>3);
+// Sequence of most extreme studentized deviates (largest |x − mean|/std removed one at a time),
+// shared by Grubbs and GESD. Exact scan for n ≤ 3000, O(1) per step on sorted data beyond.
+function makeESDIterator(arr){
+  const n = arr.length;
+  if (n <= 3000) {
+    const alive = new Uint8Array(n).fill(1);
+    let m = n;
+    return { next(){
+      if (m < 3) return null;
+      let s = 0; for (let i=0;i<n;i++) if (alive[i]) s += arr[i];
+      const mean = s/m;
+      let ss = 0; for (let i=0;i<n;i++) if (alive[i]) { const d = arr[i]-mean; ss += d*d; }
+      const sd = Math.sqrt(ss/(m-1));
+      if (!(sd > 0)) return null;
+      let jm = -1, gm = -1;
+      for (let i=0;i<n;i++) if (alive[i]) { const g = Math.abs(arr[i]-mean)/sd; if (g > gm) { gm = g; jm = i; } }
+      const size = m; alive[jm] = 0; m--;
+      return {index:jm, R:gm, size};
+    }};
   }
-  if(method==='iqr'){
-    const s=[...arr].sort((a,b)=>a-b);
-    const q1=s[Math.floor(n*0.25)],q3=s[Math.floor(n*0.75)],iqr=q3-q1;
-    return arr.map(x=>x<q1-1.5*iqr||x>q3+1.5*iqr);
-  }
-  if(method==='grubbs'){
-    const flags=new Array(n).fill(false);
-    for(let iter=0;iter<Math.floor(n/2);iter++){
-      const c=arr.filter((_,i)=>!flags[i]);if(c.length<3)break;
-      const m2=arrMean(c),s2=arrStd(c);
-      let maxG=0,maxIdx=-1;
-      arr.forEach((x,i)=>{if(flags[i])return;const g=Math.abs(x-m2)/s2;if(g>maxG){maxG=g;maxIdx=i;}});
-      const nc=c.length;
-      const tv=tInv(0.05/(2*nc),nc-2);
-      const Gcrit=(nc-1)/Math.sqrt(nc)*Math.sqrt(tv*tv/(nc-2+tv*tv));
-      if(maxG>Gcrit)flags[maxIdx]=true;else break;
-    }
-    return flags;
-  }
-  if(method==='gesd'){
-    const maxOut=Math.max(1,Math.floor(n*0.1));
-    const flags=new Array(n).fill(false);
-    for(let r=0;r<maxOut;r++){
-      const c=arr.filter((_,i)=>!flags[i]);if(c.length<3)break;
-      const m2=arrMean(c),s2=arrStd(c);
-      let maxG=0,maxIdx=-1;
-      arr.forEach((x,i)=>{if(flags[i])return;const g=Math.abs(x-m2)/s2;if(g>maxG){maxG=g;maxIdx=i;}});
-      const ni=c.length,tv=tInv(0.05/(2*(ni-r)),ni-r-2);
-      const lam=(ni-r-1)*tv/Math.sqrt((ni-r)*(ni-r-2+tv*tv));
-      if(maxG>lam)flags[maxIdx]=true;else break;
-    }
-    return flags;
-  }
-  return new Array(n).fill(false);
+  const idx = arr.map((v, i) => i).sort((a, b) => (arr[a]-arr[b]) || (a-b));
+  const c = arr[idx[n>>1]];
+  let S1 = 0, S2 = 0;
+  for (let i=0;i<n;i++){ const d = arr[i]-c; S1 += d; S2 += d*d; }
+  let lo = 0, hi = n-1, m = n;
+  return { next(){
+    if (m < 3) return null;
+    const mean = c + S1/m, sd = Math.sqrt(Math.max(0, (S2 - S1*S1/m)/(m-1)));
+    if (!(sd > 0)) return null;
+    const gl = Math.abs(arr[idx[lo]]-mean)/sd, gh = Math.abs(arr[idx[hi]]-mean)/sd;
+    const takeLo = gl > gh || (gl === gh && idx[lo] < idx[hi]);
+    const j = takeLo ? idx[lo++] : idx[hi--];
+    const d = arr[j]-c, size = m;
+    S1 -= d; S2 -= d*d; m--;
+    return {index:j, R:takeLo ? gl : gh, size};
+  }};
 }
-function tInv(p,df){const z=norminv(1-p/2);return z+(z*z*z+z)/(4*df)+(5*z*z*z*z*z+16*z*z*z+3*z)/(96*df*df)}
+function detectOutliers(arr, method){
+  const n = arr.length, none = () => new Array(n).fill(false);
+  if (method === 'none' || n < 3) return none();
+  if (method === 'mean3s') { const m = arrMean(arr), s = arrStd(arr); return arr.map(x => Math.abs(x-m) > 3*s); }
+  if (method === 'median') {
+    const med = arrMedian(arr), smad = MAD_SCALE*arrMedian(arr.map(x => Math.abs(x-med)));
+    return arr.map(x => Math.abs(x-med) > 3*smad);
+  }
+  if (method === 'iqr') {
+    const s = sortNum(arr), q1 = quantile5(s, 0.25), q3 = quantile5(s, 0.75), iqr = q3-q1;
+    return arr.map(x => x < q1-1.5*iqr || x > q3+1.5*iqr);
+  }
+  if (method === 'grubbs') {   // two-sided, repeated until the most extreme value is not significant
+    const it = makeESDIterator(arr), flags = none();
+    for (;;) {
+      const st = it.next(); if (!st) break;
+      const N = st.size, t = tinvUpper(ALPHA/(2*N), N-2);
+      const G = (N-1)/Math.sqrt(N)*Math.sqrt(t*t/(N-2+t*t));
+      if (st.R > G) flags[st.index] = true; else break;
+    }
+    return flags;
+  }
+  if (method === 'gesd') {     // Rosner (1983); r = integer nearest to 10 % of n (MATLAB default)
+    const r = Math.round(0.1*n), it = makeESDIterator(arr), seq = [];
+    for (let i=1;i<=r;i++){
+      const st = it.next(); if (!st) break;
+      const nu = n-i-1; if (nu < 1) break;
+      const t = tinvUpper(ALPHA/(2*(n-i+1)), nu);
+      seq.push({index:st.index, R:st.R, lam:(n-i)*t/Math.sqrt((n-i-1+t*t)*(n-i+1))});
+    }
+    let k = 0;
+    seq.forEach((s, i) => { if (s.R > s.lam) k = i+1; });   // LARGEST i with R_i > λ_i
+    const flags = none();
+    for (let i=0;i<k;i++) flags[seq[i].index] = true;
+    return flags;
+  }
+  return none();
+}
 
 /* ═══════════════════════════════ HISTOGRAM ═══════════════════════════ */
-function calcBins(arr, xlo, xhi, method){
-  const n=arr.length;
-  const s=[...arr].sort((a,b)=>a-b);
-  const dataMin=s[0], dataMax=s[n-1];
-  const dataRange=Math.max(1e-12, dataMax-dataMin);
-  // guard invalid plot range
-  if(!isFinite(xlo)||!isFinite(xhi)||xhi<=xlo){xlo=dataMin;xhi=dataMax;}
-  // proper linear-interpolation quartiles
-  const q=(p)=>{const idx=p*(n-1),lo=Math.floor(idx),hi=Math.ceil(idx);return s[lo]+(s[hi]-s[lo])*(idx-lo);};
-  // Bin WIDTH h from the statistical rule applied to the DATA
-  let h;
-  if(method==='fd'||method==='auto'){
-    const iqr=q(0.75)-q(0.25);
-    h=iqr>0?2*iqr*Math.pow(n,-1/3):dataRange/Math.max(5,Math.ceil(Math.sqrt(n)));
-    if(method==='auto'){
-      const hSturges=dataRange/(Math.ceil(Math.log2(n))+1);
-      h=Math.min(h,hSturges);   // 'auto' = max bins = min width
-    }
-  } else if(method==='sqrt'){
-    h=dataRange/Math.ceil(Math.sqrt(n));
-  } else if(method==='sturges'){
-    h=dataRange/(Math.ceil(Math.log2(n))+1);
-  } else if(method==='rice'){
-    h=dataRange/Math.ceil(2*Math.pow(n,1/3));
-  } else if(method==='scott'){
-    const sigma=arrStd(arr);
-    h=sigma>0?3.5*sigma*Math.pow(n,-1/3):dataRange/Math.ceil(Math.sqrt(n));
-  } else {
-    h=dataRange/Math.ceil(Math.sqrt(n));
+// equal-width bins spanning [min, max] of the data; number of bins from the chosen rule
+function calcBins(arr, method){
+  const s = sortNum(arr), n = s.length, lo = s[0], hi = s[n-1], range = hi-lo;
+  if (!(range > 0)) return [lo-0.5, lo+0.5];
+  const iqr = quantile5(s, 0.75) - quantile5(s, 0.25);
+  const fdW = iqr > 0 ? 2*iqr*Math.pow(n, -1/3) : 0;
+  const nbSturges = Math.ceil(Math.log2(n) + 1);
+  let nb;
+  switch (method) {
+    case 'sqrt':    nb = Math.ceil(Math.sqrt(n)); break;
+    case 'sturges': nb = nbSturges; break;
+    case 'rice':    nb = Math.ceil(2*Math.cbrt(n)); break;
+    case 'scott':   { const sd = arrStd(arr); nb = sd > 0 ? Math.ceil(range/(3.5*sd*Math.pow(n, -1/3))) : 1; break; }
+    case 'auto':    nb = fdW > 0 ? Math.max(Math.ceil(range/fdW), nbSturges) : nbSturges; break;
+    default:        nb = fdW > 0 ? Math.ceil(range/fdW) : Math.ceil(Math.sqrt(n));   // 'fd'
   }
-  // Bin GRID spans the PLOT range so bars align with linear axes; empty bins are zero
-  const span=xhi-xlo;
-  let nb=Math.max(3,Math.min(200,Math.ceil(span/h)));
-  const edges=[];
-  for(let i=0;i<=nb;i++) edges.push(xlo+i*span/nb);
+  nb = Math.max(1, Math.min(200, nb));
+  const edges = new Array(nb+1);
+  for (let i=0;i<=nb;i++) edges[i] = lo + range*i/nb;
+  edges[nb] = hi;
   return edges;
 }
-function histPDF(arr,edges){
-  const n=arr.length,nb=edges.length-1;
-  const counts=new Array(nb).fill(0);
-  arr.forEach(x=>{for(let i=0;i<nb;i++){if((x>=edges[i]&&x<edges[i+1])||(i===nb-1&&x===edges[nb])){counts[i]++;break;}}});
-  const centers=[],densities=[],widths=[];
-  for(let i=0;i<nb;i++){centers.push((edges[i]+edges[i+1])/2);widths.push(edges[i+1]-edges[i]);densities.push(counts[i]/(n*widths[i]));}
-  return{centers,densities,widths};
+function histCounts(arr, edges){
+  const nb = edges.length-1, w = (edges[nb]-edges[0])/nb, c = new Array(nb).fill(0);
+  for (let k=0;k<arr.length;k++){
+    const x = arr[k];
+    let i = Math.floor((x-edges[0])/w);
+    if (i < 0) i = 0; if (i > nb-1) i = nb-1;
+    while (i > 0 && x < edges[i]) i--;
+    while (i < nb-1 && x >= edges[i+1]) i++;
+    c[i]++;
+  }
+  return c;
 }
-function ecdfPts(arr){const s=[...arr].sort((a,b)=>a-b);return s.map((x,i)=>({x,p:(i+1)/s.length}))}
 
 /* ═══════════════════════════════ GOF TESTS ═══════════════════════════ */
-function ksTest(arr,cdfFn){
-  const s=[...arr].sort((a,b)=>a-b),n=s.length;
-  let D=0;
-  s.forEach((x,i)=>{D=Math.max(D,Math.abs((i+1)/n-cdfFn(x)),Math.abs(i/n-cdfFn(x)))});
-  const sq=Math.sqrt(n),lam=(sq+.12+.11/sq)*D;
-  let p=2*[1,2,3,4,5].reduce((t,j)=>t+(j%2===1?1:-1)*Math.exp(-2*j*j*lam*lam),0);
-  p=Math.max(0,Math.min(1,p));return{stat:D,p,reject:p<0.05};
+function ksStat(s, cdf){   // s sorted
+  const n = s.length; let D = 0;
+  for (let i=0;i<n;i++){ const F = cdf(s[i]), a = (i+1)/n - F, b = F - i/n; if (a > D) D = a; if (b > D) D = b; }
+  return D;
 }
-function chiSqTest(arr,cdfFn,nParams){
-  const n=arr.length,k=Math.max(5,Math.ceil(Math.sqrt(n)));
-  const s=[...arr].sort((a,b)=>a-b);
-  const edges=[s[0]-1e-9];
-  for(let i=1;i<k;i++){let lo=s[0],hi=s[s.length-1];const p=i/k;for(let it=0;it<60;it++){const m=(lo+hi)/2;cdfFn(m)<p?lo=m:hi=m;}edges.push((lo+hi)/2);}
-  edges.push(s[s.length-1]+1e-9);
-  const obs=new Array(k).fill(0);
-  s.forEach(x=>{let b=edges.findIndex((e,i)=>i<k&&x>=edges[i]&&x<edges[i+1]);if(b>=0)obs[b]++;});
-  const exp=n/k;
-  const chi2=obs.reduce((t,o)=>exp>0?t+(o-exp)*(o-exp)/exp:t,0);
-  // df = (#bins - 1) - (#estimated parameters)
-  const df=Math.max(1,k-1-(nParams||2));
-  const p=1-gamcdf(chi2*0.5,df*0.5);
-  return{stat:chi2,df,p,reject:p<0.05};
+// K–S and A–D statistics of the sorted sample s. For the Uniform the end points are estimated by
+// the sample min and max, so those two points carry no information: the statistics use the n − 2
+// interior points, which are distributed as ordered uniforms (Stephens 1986, test with unknown limits).
+function gofStats(s, fit){
+  const t = fit.dist === 'uniform' ? s.slice(1, s.length-1) : s, n = t.length;
+  const lF = new Float64Array(n), lS = new Float64Array(n);
+  let D = 0;
+  for (let i=0;i<n;i++){
+    const v = fit.cdfsf(t[i]), F = v[0];
+    if ((i+1)/n - F > D) D = (i+1)/n - F;
+    if (F - i/n > D) D = F - i/n;
+    lF[i] = Math.log(Math.max(F, 1e-300));       // tails clamped identically for data and bootstrap
+    lS[i] = Math.log(Math.max(v[1], 1e-300));
+  }
+  let S = 0;
+  for (let i=0;i<n;i++) S += (2*i+1)*(lF[i] + lS[n-1-i]);
+  return {D, A:-n - S/n, n};
 }
-// number of estimated parameters per distribution
-function distParamCount(dist){
-  if(dist==='rayleigh'||dist==='exponential') return 1;
-  return 2;
+// classic K–S p-value (asymptotic, parameters treated as known — what MATLAB kstest reports)
+function ksClassicP(D, n){ const sq = Math.sqrt(n); return kolmogorovSF((sq + 0.12 + 0.11/sq)*D); }
+// χ² test with k equiprobable classes of the fitted distribution; df = k − 1 − (#parameters)
+function chiSqTest(x, fit, m){
+  // Uniform: min and max are the end points of the fit, so the n − 2 interior points are tested
+  // against the fully specified uniform on [min, max] (no degrees of freedom lost)
+  if (fit.dist === 'uniform') { const s = sortNum(x); x = s.slice(1, s.length-1); m = 0; }
+  const n = x.length, kmax = Math.floor(n/5);
+  if (kmax < m+2) return {applicable:false, reason:`needs n ≥ ${5*(m+2)}`};
+  const k = Math.max(m+2, Math.min(Math.round(2*Math.pow(n, 0.4)), kmax));
+  const edges = [];
+  for (let i=1;i<k;i++) edges.push(fit.icdf(i/k));
+  const obs = new Array(k).fill(0);
+  for (let j=0;j<n;j++){
+    let lo = 0, hi = edges.length;
+    while (lo < hi) { const mid = (lo+hi)>>1; if (edges[mid] <= x[j]) lo = mid+1; else hi = mid; }
+    obs[lo]++;
+  }
+  const E = n/k; let chi2 = 0;
+  for (let i=0;i<k;i++) chi2 += (obs[i]-E)*(obs[i]-E)/E;
+  const df = k-1-m, p = chi2sf(chi2, df);
+  return {applicable:true, stat:chi2, df, k, p, reject:p < ALPHA};
 }
-function lillieforsTest(arr,disttype){
-  // Apply KS on log-transformed data for lognormal, raw otherwise
-  const vals=disttype==='lognormal'?arr.map(x=>Math.log(Math.max(x,1e-300))):[...arr];
-  const m=arrMean(vals),s=arrStd(vals);
-  const res=ksTest(vals,x=>normcdf((x-m)/s));
-  // Lilliefors critical value at α=0.05 (Dallal-Wilkinson / Molin-Abdi form)
-  const n=vals.length;
-  const nStar=Math.sqrt(n)-0.01+0.85/Math.sqrt(n);
-  const Dcrit=0.895/nStar;
-  return{stat:res.stat,p:res.p,reject:res.stat>Dcrit};
+// Lilliefors normality test (of x, or of ln x for LogNormal); p-value: Dallal & Wilkinson (1986)
+function lillieforsTest(arr, d){
+  if (d !== 'normal' && d !== 'lognormal') return {applicable:false, reason:'Normal / LogNormal only'};
+  const v = d === 'lognormal' ? arr.map(x => Math.log(x)) : arr.slice();
+  const n = v.length, m = arrMean(v), sd = arrStd(v);
+  const D = ksStat(sortNum(v), x => normcdf((x-m)/sd));
+  let Kd = D, nd = n;
+  if (n > 100) { Kd = D*Math.pow(n/100, 0.49); nd = 100; }
+  let p = Math.exp(-7.01256*Kd*Kd*(nd+2.78019) + 2.99587*Kd*Math.sqrt(nd+2.78019) - 0.122119 + 0.974598/Math.sqrt(nd) + 1.67997/nd);
+  if (p > 0.1) {
+    const KK = (Math.sqrt(n) - 0.01 + 0.85/Math.sqrt(n))*D;
+    if (KK <= 0.302) p = 1;
+    else if (KK <= 0.5) p = 2.76773 - 19.828315*KK + 80.709644*KK*KK - 138.55152*KK*KK*KK + 81.218052*KK*KK*KK*KK;
+    else if (KK <= 0.9) p = -4.901232 + 40.662806*KK - 97.490286*KK*KK + 94.029866*KK*KK*KK - 32.355711*KK*KK*KK*KK;
+    else if (KK <= 1.31) p = 6.198765 - 19.558097*KK + 23.186922*KK*KK - 12.733469*KK*KK*KK + 2.663434*KK*KK*KK*KK;
+    else p = 1;
+  }
+  p = Math.min(1, Math.max(0, p));
+  return {applicable:true, stat:D, p, reject:p < ALPHA};
 }
-function adTest(arr,cdfFn){
-  const s=[...arr].sort((a,b)=>a-b),n=s.length;
-  let A2=0;
-  s.forEach((x,i)=>{
-    const F=Math.max(1e-12,Math.min(1-1e-12,cdfFn(x)));
-    const F2=Math.max(1e-12,Math.min(1-1e-12,cdfFn(s[n-1-i])));
-    A2+=(2*(i+1)-1)*(Math.log(F)+Math.log(1-F2));
-  });
-  A2=-n-A2/n;
-  const A2a=A2*(1+0.75/n+2.25/(n*n));
-  let p;
-  if(A2a>=0.6)      p=Math.exp(1.2937-5.709*A2a+0.0186*A2a*A2a);
-  else if(A2a>=0.34)p=Math.exp(0.9177-4.279*A2a-1.38*A2a*A2a);
-  else if(A2a>=0.2) p=1-Math.exp(-8.318+42.796*A2a-59.938*A2a*A2a);
-  else              p=1-Math.exp(-13.436+101.14*A2a-223.73*A2a*A2a);
-  p=Math.max(0,Math.min(1,p));return{stat:A2a,p,reject:p<0.05};
+
+/* ═══════════════════════ PARAMETRIC BOOTSTRAP (K–S, A–D) ═════════════ */
+// Fixed seed per family: results are reproducible, and since every estimator is equivariant under a
+// change of units, rescaled data (e.g. MPa → kPa) give exactly the same p-values.
+function hashSeed(str){
+  let h = 2166136261 >>> 0;
+  for (let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return h;
 }
+function makeRng(seed){   // mulberry32, returns values strictly inside (0, 1)
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return (((t ^ (t >>> 14)) >>> 0) + 0.5)/4294967296;
+  };
+}
+function makeSampler(d, p1, p2, rng){
+  const N = () => Math.sqrt(-2*Math.log(rng()))*Math.cos(2*Math.PI*rng());
+  const G = a => {   // Marsaglia–Tsang
+    if (a < 1) return G(a+1)*Math.pow(rng(), 1/a);
+    const dd = a - 1/3, c = 1/Math.sqrt(9*dd);
+    for (;;) {
+      let z, v;
+      do { z = N(); v = 1 + c*z; } while (v <= 0);
+      v = v*v*v;
+      if (Math.log(rng()) < 0.5*z*z + dd - dd*v + dd*Math.log(v)) return dd*v;
+    }
+  };
+  switch (d) {
+    case 'normal':      return () => p1 + p2*N();
+    case 'lognormal':   return () => Math.exp(p1 + p2*N());
+    case 'weibull':     return () => p2*Math.pow(-Math.log(rng()), 1/p1);
+    case 'gamma':       return () => p2*G(p1);
+    case 'rayleigh':    return () => p1*Math.sqrt(-2*Math.log(rng()));
+    case 'exponential': return () => -Math.log(rng())/p1;
+    case 'uniform':     return () => p1 + (p2-p1)*rng();
+    case 'gumbel':      return () => p1 - p2*Math.log(-Math.log(rng()));
+    case 'frechet':     return () => p2*Math.pow(-Math.log(rng()), -1/p1);
+    case 'loglogistic': return () => { const u = rng(); return p1*Math.pow(u/(1-u), 1/p2); };
+  }
+  return () => NaN;
+}
+// replicates: 2000 up to n = 1000, 1000 up to n = 2000, then fewer (at least 100) to bound the run time
+function bootstrapReps(n){ return n <= 1000 ? 2000 : n <= 2000 ? 1000 : Math.max(100, Math.round(2e6/n)); }
+function gofBootstrapInit(x, fit, B){
+  const g = gofStats(sortNum(x), fit);
+  return {d:fit.dist, n:x.length, p1:fit.p1, p2:fit.p2, D0:g.D, A0:g.A,
+    B:B || bootstrapReps(x.length), b:0, valid:0, geD:0, geA:0,
+    rng:makeRng(hashSeed('gof-bootstrap:' + fit.dist)), sample:null};
+}
+function gofBootstrapStep(st, maxReps){   // returns true when finished
+  if (!st.sample) st.sample = makeSampler(st.d, st.p1, st.p2, st.rng);
+  const y = new Array(st.n);
+  let r = 0;
+  while (st.b < st.B && r < maxReps) {
+    for (let i=0;i<st.n;i++) y[i] = st.sample();
+    st.b++; r++;
+    const pr = fitParams(y, st.d);
+    if (!fitIsValid(st.d, pr[0], pr[1])) continue;
+    const g = gofStats(sortNum(y), makeFit(st.d, pr[0], pr[1])), Db = g.D, Ab = g.A;
+    if (!isFinite(Db) || !isFinite(Ab)) continue;
+    st.valid++;
+    if (Db >= st.D0) st.geD++;
+    if (Ab >= st.A0) st.geA++;
+  }
+  return st.b >= st.B;
+}
+function gofBootstrapResult(st){
+  return {pKS:(1+st.geD)/(st.valid+1), pAD:(1+st.geA)/(st.valid+1), valid:st.valid, B:st.B};
+}
+function gofBootstrapSync(x, fit, B){ const st = gofBootstrapInit(x, fit, B); while (!gofBootstrapStep(st, 1e9)); return gofBootstrapResult(st); }
 
 /* ═══════════════════════════════ DATA INPUT ══════════════════════════ */
-function parseValues(text){
-  return text.split(/[\s,;|\t\r\n]+/).map(s=>parseFloat(s.replace(',','.'))).filter(x=>isFinite(x)&&!isNaN(x));
-}
-
-function applyLoadedData(nums, sourceLabel){
-  rawData=nums;
-  document.getElementById('nPts').value=nums.length;
-  document.getElementById('btnRun').disabled=false;
-  const mn=Math.min(...nums),mx=Math.max(...nums),r=mx-mn;
-  document.getElementById('xlimMin').value=(mn-0.1*r).toFixed(3);
-  document.getElementById('xlimMax').value=(mx+0.1*r).toFixed(3);
-  document.getElementById('logBox').textContent=
-    '===== Data Loaded =====\nSource: '+sourceLabel+'\nN     : '+nums.length+'\nMin   : '+mn.toFixed(4)+'\nMax   : '+mx.toFixed(4)+'\nMean  : '+arrMean(nums).toFixed(4)+'\nStd   : '+arrStd(nums).toFixed(4)+'\n\nConfigure settings and click Run Analysis.';
-  setStatus(nums.length+' values loaded. Click Run Analysis.','ok');
-}
-
-function setInputMode(mode){
-  const fileBtn=document.getElementById('inModeFile'), pasteBtn=document.getElementById('inModePaste');
-  if(mode==='file'){
-    document.getElementById('fileInputWrap').style.display='';
-    document.getElementById('pasteInputWrap').style.display='none';
-    fileBtn.classList.remove('btn-gray');fileBtn.classList.add('btn-blue');
-    pasteBtn.classList.add('btn-gray');pasteBtn.classList.remove('btn-blue');
-  } else {
-    document.getElementById('fileInputWrap').style.display='none';
-    document.getElementById('pasteInputWrap').style.display='';
-    pasteBtn.classList.remove('btn-gray');pasteBtn.classList.add('btn-blue');
-    fileBtn.classList.add('btn-gray');fileBtn.classList.remove('btn-blue');
+// Tokens are separated by whitespace, ';', '|' and — unless comma is the decimal mark — ','.
+// Auto mode: comma is the decimal mark when no token has a decimal point and tokens look like 24,6.
+function parseValues(text, decMode){
+  text = String(text).replace(/^\uFEFF/, '');
+  let tokens = text.split(/[\s;|]+/).filter(t => t.length);
+  let dec = decMode || 'auto';
+  if (dec === 'auto') {
+    const dotDec = tokens.some(t => /\d\.\d|(^|[^\d])\.\d/.test(t));
+    const multiComma = tokens.some(t => (t.match(/,/g) || []).length > 1);
+    const commaNum = tokens.some(t => /^[+\-\u2212]?\d*,\d+([eE][+\-]?\d+)?$/.test(t));
+    dec = (!dotDec && !multiComma && commaNum) ? ',' : '.';
   }
+  if (dec === '.') tokens = tokens.flatMap(t => t.split(',')).filter(t => t.length);
+  const re = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+  const values = [], skipped = [];
+  for (const raw of tokens) {
+    let t = raw.replace(/^\u2212/, '-');
+    if (dec === ',') t = t.replace(',', '.');
+    const v = Number(t);
+    if (re.test(t) && isFinite(v)) values.push(v); else skipped.push(raw);
+  }
+  return {values, skipped, decimal:dec};
 }
-
-function loadPasted(){
-  const nums=parseValues(document.getElementById('pasteArea').value);
-  if(nums.length<5){setStatus('Too few values — need at least 5.','err');alert('Please enter at least 5 numeric values.');return}
-  applyLoadedData(nums, 'manual entry');
+function loadText(text, label){
+  const r = parseValues(text, 'auto');
+  if (r.values.length < 5) {
+    // forget any previous data, so that Run cannot silently analyse the old values
+    rawData = null; rawInfo = null; fitResult = null; gofJob++;
+    destroyCharts(); resetGofChips();
+    document.getElementById('nPts').value = 0;
+    document.getElementById('btnRun').disabled = true;
+    document.getElementById('outBox').textContent = '—';
+    document.getElementById('invResult').textContent = 'Run analysis first';
+    setStatus(`Only ${r.values.length} numeric value(s) found — at least 5 are needed.`, 'err');
+    document.getElementById('logBox').textContent = `No usable data in ${label}.\nNumeric values found: ${r.values.length}` +
+      (r.skipped.length ? `\nNon-numeric tokens: ${r.skipped.slice(0, 10).join('  ')}` : '');
+    return false;
+  }
+  applyLoadedData(r, label);
+  return true;
 }
-
+function applyLoadedData(r, label){
+  rawData = r.values;
+  rawInfo = {label, decimal:r.decimal, skipped:r.skipped};
+  fitResult = null; gofJob++;
+  destroyCharts();
+  resetGofChips();
+  document.getElementById('invResult').textContent = 'Run analysis first';
+  document.getElementById('outBox').textContent = '—';
+  document.getElementById('nPts').value = rawData.length;
+  document.getElementById('btnRun').disabled = false;
+  document.getElementById('xlimMin').value = '';     // plot range back to automatic for new data
+  document.getElementById('xlimMax').value = '';
+  const mn = arrMin(rawData), mx = arrMax(rawData);
+  document.getElementById('logBox').textContent =
+    '===== Data loaded =====\n' +
+    `Source            : ${label}\n` +
+    `Decimal separator : ${r.decimal === ',' ? 'comma (24,6)' : 'point (24.6)'} — detected automatically\n` +
+    `Values read       : ${rawData.length}\n` +
+    (r.skipped.length ? `Skipped tokens    : ${r.skipped.length} (not numbers): ${r.skipped.slice(0, 8).join('  ')}${r.skipped.length > 8 ? ' …' : ''}\n` : '') +
+    `Min / Max         : ${fmt(mn)} / ${fmt(mx)}\n` +
+    `Mean / Std        : ${fmt(arrMean(rawData))} / ${fmt(arrStd(rawData))}\n\n` +
+    'Configure the settings and click Run Analysis.';
+  setStatus(`${rawData.length} values loaded${r.skipped.length ? ` (${r.skipped.length} non-numeric token(s) skipped — see log)` : ''}. Click Run Analysis.`, 'ok');
+}
+function setInputMode(mode){
+  const fileBtn = document.getElementById('inModeFile'), pasteBtn = document.getElementById('inModePaste');
+  const isFile = mode === 'file';
+  document.getElementById('fileInputWrap').style.display = isFile ? '' : 'none';
+  document.getElementById('pasteInputWrap').style.display = isFile ? 'none' : '';
+  fileBtn.classList.toggle('btn-blue', isFile);  fileBtn.classList.toggle('btn-gray', !isFile);
+  pasteBtn.classList.toggle('btn-blue', !isFile); pasteBtn.classList.toggle('btn-gray', isFile);
+}
+function loadPasted(){ loadText(document.getElementById('pasteArea').value, 'typed / pasted values'); }
 function loadFile(file){
-  if(!file)return;
-  document.getElementById('fname').textContent='⏳ '+file.name;
-  const reader=new FileReader();
-  reader.onload=e=>{
-    const nums=parseValues(e.target.result);
-    if(nums.length<5){document.getElementById('fname').textContent='⚠ Too few values — check file';return}
-    document.getElementById('fname').textContent='✓ '+file.name;
-    applyLoadedData(nums, file.name);
+  if (!file) return;
+  const fname = document.getElementById('fname');
+  fname.textContent = '⏳ ' + file.name;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const ok = loadText(e.target.result, file.name);
+    fname.textContent = (ok ? '✓ ' : '⚠ ') + file.name;
+    document.getElementById('fileIn').value = '';   // allow re-loading the same file after editing
   };
-  reader.onerror=()=>{document.getElementById('fname').textContent='⚠ Error reading file';};
+  reader.onerror = () => { fname.textContent = '⚠ Error reading file'; };
   reader.readAsText(file);
 }
-window.addEventListener('DOMContentLoaded',()=>{
-  const zone=document.getElementById('uploadZone');
-  zone.addEventListener('dragover',e=>{e.preventDefault();e.stopPropagation();zone.style.borderColor='var(--accent)';});
-  zone.addEventListener('dragleave',e=>{e.preventDefault();zone.style.borderColor='';});
-  zone.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();zone.style.borderColor='';const f=e.dataTransfer.files[0];if(f)loadFile(f);});
-  document.getElementById('fileIn').addEventListener('change',function(){loadFile(this.files[0])});
-  document.querySelectorAll('.tab').forEach((t,i)=>t.addEventListener('click',()=>showTab(i)));
+
+window.addEventListener('DOMContentLoaded', () => {
+  const zone = document.getElementById('uploadZone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); zone.style.borderColor = 'var(--accent)'; });
+  zone.addEventListener('dragleave', e => { e.preventDefault(); zone.style.borderColor = ''; });
+  zone.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); zone.style.borderColor = ''; const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+  document.querySelectorAll('.tab').forEach((t, i) => t.addEventListener('click', () => showTab(i)));
+  document.getElementById('invProb').addEventListener('keydown', e => { if (e.key === 'Enter') calcInverse(); });
+  ['binMethod', 'momentMode', 'xlimMin', 'xlimMax', 'ylimMax', 'xlabel'].forEach(id =>    // graph settings: redraw at once
+    document.getElementById(id).addEventListener('change', () => { if (fitResult) { renderCharts(); renderLog(); } }));
   setInputMode('file');
+  onDistChange();
 });
 
 /* ═══════════════════════════════ RUN ═════════════════════════════════ */
 function runAnalysis(){
-  if(!rawData||rawData.length<5){alert('Load a data file first.');return}
-  const dist     = document.getElementById('distType').value;
-  const outMeth  = document.getElementById('outlierMethod').value;
-  const binMeth  = document.getElementById('binMethod').value;
-  const momMode  = document.getElementById('momentMode').value;
-  const xmin     = parseFloat(document.getElementById('xlimMin').value);
-  const xmax     = parseFloat(document.getElementById('xlimMax').value);
-  const xlabel   = document.getElementById('xlabel').value||'x';
-  setStatus('Running analysis…','running');
+  if (!rawData || rawData.length < 5) { setStatus('Load at least 5 values first.', 'err'); return; }
+  const dist    = document.getElementById('distType').value;
+  const outMeth = document.getElementById('outlierMethod').value;
+  const job = ++gofJob;
 
-  // Outliers
   const flags = detectOutliers(rawData, outMeth);
-  const outlierVals = rawData.filter((_,i)=>flags[i]);
-  const clean = rawData.filter((_,i)=>!flags[i]);
-  if(clean.length<5){setStatus('Too few values after outlier removal.','err');return}
+  const clean = [], outlierVals = [];
+  rawData.forEach((v, i) => (flags[i] ? outlierVals : clean).push(v));
+  document.getElementById('outBox').textContent = outlierVals.length ? outlierVals.map(v => fmt(v)).join(', ') : 'None detected';
+  document.getElementById('distBadge').textContent = DIST_NAMES[dist];
 
-  // Fit
-  const fit = fitDist(clean, dist);
-  fitResult = {fit, clean, dist, xmin, xmax, xlabel, binMeth, momMode};
+  const err = validateForDist(clean, dist);
+  const fit = err ? null : fitDist(clean, dist);
+  if (err || !fitIsValid(dist, fit.p1, fit.p2)) {
+    const msg = err || `The ${DIST_NAMES[dist]} fit did not converge for these data.`;
+    fitResult = null; destroyCharts(); resetGofChips();
+    ['pdfPH', 'cdfPH', 'combPH'].forEach(id => { document.getElementById(id).lastElementChild.textContent = msg; });
+    document.getElementById('invResult').textContent = '—';
+    document.getElementById('logBox').textContent = `===== Analysis not possible =====\n${msg}\n\nN loaded: ${rawData.length}   N after outlier removal: ${clean.length}`;
+    setStatus(msg, 'err');
+    return;
+  }
 
-  // Stats (go to log only now)
-  document.getElementById('distBadge').textContent=dist.charAt(0).toUpperCase()+dist.slice(1);
+  const g0 = gofStats(sortNum(clean), fit), m = distParamCount(dist);
+  const gof = {D:g0.D, A:g0.A, pKSclassic:ksClassicP(g0.D, g0.n),
+    chi:chiSqTest(clean, fit, m), lil:lillieforsTest(clean, dist), pKS:null, pAD:null, B:bootstrapReps(clean.length), valid:0};
+  fitResult = {fit, clean, outlierVals, rawN:rawData.length, dist, outMeth, gof, inv:null};
 
-  // GoF
-  const ksR = ksTest(clean,fit.cdf);
-  const chiR= chiSqTest(clean,fit.cdf,distParamCount(dist));
-  const lilR= lillieforsTest(clean,dist);
-  const adR = adTest(clean,fit.cdf);
-  setGC('gc-ks', 'K–S Test',       ksR.reject,  `p = ${ksR.p.toFixed(4)}`);
-  setGC('gc-chi','Chi-squared',     chiR.reject, `p = ${chiR.p.toFixed(4)}`);
-  setGC('gc-lil','Lilliefors',      lilR.reject, `stat = ${lilR.stat.toFixed(4)}`);
-  setGC('gc-ad', 'Anderson–Darling',adR.reject,  `A² = ${adR.stat.toFixed(4)}`);
-
-  // Outlier display
-  document.getElementById('outBox').textContent=outlierVals.length?outlierVals.map(v=>v.toFixed(4)).join(', '):'None detected';
-
-  // Curve x grid
-  const xlo=Math.max(1e-300,fit.icdf(0.001)||xmin);
-  const xhi=fit.icdf(0.999)||xmax;
-  const xs=linspace(Math.max(xmin,xlo),Math.min(xmax,xhi),500);
-
-  // Y max for PDF
-  const ylimRaw = parseFloat(document.getElementById('ylimMax').value);
-  const ylimMax = isFinite(ylimRaw) && ylimRaw > 0 ? ylimRaw : null;
-
-  drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax,binMeth,momMode);
-  drawCDF(clean,fit,xs,xmin,xmax,xlabel,dist);
-  drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,ksR,chiR,lilR,adR,ylimMax,binMeth,momMode);
-
-  // Log
-  document.getElementById('logBox').textContent=buildLog(rawData.length,clean.length,outlierVals.length,outMeth,clean,fit,dist,ksR,chiR,lilR,adR);
-
-  setStatus(`Done — N=${clean.length} · dist=${dist} · KS p=${ksR.p.toFixed(3)} · AD A²=${adR.stat.toFixed(4)}`,'ok');
-  calcInverse();
+  updateGofUI();
+  calcInverse();                       // also draws the charts and writes the log
+  startGofBootstrap(job, fitResult);
+}
+function startGofBootstrap(job, R){
+  const st = gofBootstrapInit(R.clean, R.fit, R.gof.B);
+  const per = R.clean.length > 20000 ? 1 : 5;               // replicates between time checks
+  const tick = () => {
+    if (job !== gofJob || R !== fitResult) return;          // superseded by a newer run
+    const t0 = performance.now();
+    let done = false;
+    while (!done && performance.now()-t0 < 40) done = gofBootstrapStep(st, per);
+    if (!done) {
+      setStatus(`Computing bootstrap p-values (K–S, A–D)… ${Math.round(100*st.b/st.B)} %`, 'running');
+      setTimeout(tick, 0);
+      return;
+    }
+    const res = gofBootstrapResult(st);
+    if (res.valid >= 0.9*st.B) { R.gof.pKS = res.pKS; R.gof.pAD = res.pAD; }
+    else { R.gof.pKS = NaN; R.gof.pAD = NaN; }
+    R.gof.valid = res.valid;
+    updateGofUI(); renderLog();
+    const g = R.gof;
+    setStatus(`Done — N = ${R.clean.length} · ${DIST_NAMES[R.dist]} · K–S ${pEq(g.pKS)} · A–D ${pEq(g.pAD)}`, 'ok');
+  };
+  setStatus('Computing bootstrap p-values (K–S, A–D)…', 'running');
+  setTimeout(tick, 0);
 }
 
-function setGC(id,name,reject,stat){
-  const el=document.getElementById(id);
-  el.className='gc '+(reject?'fail':'pass');
-  el.innerHTML=`<span class="gc-name">${name}</span><span class="gc-res">${reject?'FAIL':'PASS'}</span><span class="gc-p">${stat}</span>`;
+/* ═══════════════════════════════ GOF DISPLAY ═════════════════════════ */
+function setGC(id, state, name, detail, title, resText){
+  const el = document.getElementById(id);
+  el.className = 'gc ' + state;
+  el.title = title || '';
+  const res = resText || {pass:'PASS', fail:'FAIL', pend:'…', na:'n/a'}[state];
+  el.innerHTML = `<span class="gc-name">${name}</span><span class="gc-res">${res}</span><span class="gc-p">${detail}</span>`;
+}
+function resetGofChips(){
+  setGC('gc-ks', 'pend', 'K–S', 'p=—', '', '—'); setGC('gc-chi', 'pend', 'χ²', 'p=—', '', '—');
+  setGC('gc-lil', 'pend', 'Lilliefors', 'p=—', '', '—'); setGC('gc-ad', 'pend', 'A–D', 'p=—', '', '—');
+}
+function updateGofUI(){
+  const R = fitResult; if (!R) return;
+  const g = R.gof, bootTitle = `p-value by parametric bootstrap (B = ${g.B}), valid when the parameters are estimated from the data`;
+  const boot = (id, name, stat, p) => {
+    if (p === null) setGC(id, 'pend', name, `${stat} · p …`, bootTitle);
+    else if (!(p >= 0)) setGC(id, 'na', name, 'bootstrap failed', bootTitle);
+    else setGC(id, p < ALPHA ? 'fail' : 'pass', name, pEq(p), `${stat} — ${bootTitle}`);
+  };
+  boot('gc-ks', 'K–S', `D = ${fmt(g.D, 4)}`, g.pKS);
+  boot('gc-ad', 'A–D', `A² = ${fmt(g.A, 4)}`, g.pAD);
+  if (g.chi.applicable) setGC('gc-chi', g.chi.reject ? 'fail' : 'pass', 'χ²', pEq(g.chi.p),
+    `χ² = ${fmt(g.chi.stat, 4)}, df = ${g.chi.df}, ${g.chi.k} equiprobable classes`);
+  else setGC('gc-chi', 'na', 'χ²', g.chi.reason, 'χ² needs an expected count of at least 5 per class');
+  if (g.lil.applicable) setGC('gc-lil', g.lil.reject ? 'fail' : 'pass', 'Lilliefors', pEq(g.lil.p),
+    `D = ${fmt(g.lil.stat, 4)} — normality of ${R.dist === 'lognormal' ? 'ln x' : 'x'} (Dallal–Wilkinson p-value)`);
+  else setGC('gc-lil', 'na', 'Lilliefors', 'Normal/LogNormal only', 'The Lilliefors test checks normality; it does not apply to this distribution');
 }
 
-/* ── compute (mean, std) for moment lines based on mode ── */
-function momentValues(fit, clean, momMode){
-  if(momMode==='none') return {m:NaN, s:0};            // no lines
-  if(momMode==='data') return {m:arrMean(clean), s:arrStd(clean)};
-  return {m:fit.meanFit, s:isFinite(fit.stdFit)?fit.stdFit:0}; // fitted (default)
-}
-
-/* ── shared chart colours (white background) ── */
+/* ═══════════════════════════════ CHARTS ══════════════════════════════ */
 const CHT = {
   axTick:'#444', axTitle:'#333', axGrid:'rgba(0,0,0,.07)',
   hist:'rgba(33,118,174,.25)', histBorder:'rgba(33,118,174,.55)',
   pdf:'#c0392b', cdf:'#d4870a', edf:'rgba(80,90,110,.6)',
-  mean:'#c0392b', sigma:'#27ae60', inv:'#8e44ad',
-  bg: {color:'white'}
+  mean:'#c0392b', sigma:'#27ae60', inv:'#8e44ad'
 };
-
-/* ═══════════════════════════════ DRAW PDF ════════════════════════════ */
-function drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax,binMeth,momMode,invLine){
-  document.getElementById('pdfPH').style.display='none';
-  const canvas=document.getElementById('pdfChart');canvas.style.display='block';
-  if(charts.pdfChart){charts.pdfChart.destroy();charts.pdfChart=null;}
-  const edges=calcBins(clean,xmin,xmax,binMeth||'fd');
-  const hist=histPDF(clean,edges);
-  const mv=momentValues(fit,clean,momMode||'fitted');
-  const mFit=mv.m, sFit=mv.s;
-  const yOpts = ylimMax ? {min:0,max:ylimMax} : {beginAtZero:true};
-
-  charts.pdfChart=new Chart(canvas,{
-    type:'bar',
-    data:{
-      labels:hist.centers.map(c=>c.toFixed(3)),
-      datasets:[
-        {label:'Histogram',data:hist.densities,backgroundColor:CHT.hist,borderColor:CHT.histBorder,borderWidth:0.5,barPercentage:1,categoryPercentage:1,order:2},
-        {label:`PDF — ${dist}`,data:hist.centers.map(c=>fit.pdf(c)),type:'line',borderColor:CHT.pdf,borderWidth:2,pointRadius:0,fill:false,tension:.4,order:1}
-      ]
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,animation:false,
-      scales:{
-        x:{title:{display:true,text:xlabel,color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10},maxTicksLimit:10},grid:{color:CHT.axGrid}},
-        y:{...yOpts,title:{display:true,text:'f(x)',color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10}},grid:{color:CHT.axGrid}}
-      },
-      plugins:{legend:{labels:{color:'#333',font:{size:10}}}}
-    },
-    plugins:[whiteBackground(), annotationPlugin(mFit,sFit,null,invLine||null)]
+function destroyCharts(){
+  Object.keys(charts).forEach(k => { if (charts[k]) charts[k].destroy(); });
+  charts = {};
+  [['pdfChart', 'pdfPH'], ['cdfChart', 'cdfPH'], ['combChart', 'combPH']].forEach(([c, ph]) => {
+    const cv = document.getElementById(c), p = document.getElementById(ph);
+    if (cv) cv.style.display = 'none';
+    if (p) { p.style.display = ''; if (p.lastElementChild) p.lastElementChild.textContent = 'Upload data and run analysis'; }
   });
 }
-
-/* ═══════════════════════════════ DRAW CDF ════════════════════════════ */
-function drawCDF(clean,fit,xs,xmin,xmax,xlabel,dist){
-  document.getElementById('cdfPH').style.display='none';
-  const canvas=document.getElementById('cdfChart');canvas.style.display='block';
-  if(charts.cdfChart){charts.cdfChart.destroy();charts.cdfChart=null;}
-  const ecdf=ecdfPts(clean);
-  charts.cdfChart=new Chart(canvas,{
-    type:'line',
-    data:{datasets:[
-      {label:'EDF (empirical)',data:ecdf.map(pt=>({x:pt.x,y:pt.p})),borderColor:CHT.edf,borderWidth:1.2,pointRadius:2,pointBackgroundColor:CHT.edf,fill:false,stepped:true,order:2},
-      {label:`CDF — ${dist}`,data:xs.map(x=>({x,y:fit.cdf(x)})),borderColor:CHT.cdf,borderWidth:2,pointRadius:0,fill:false,tension:.3,order:1}
-    ]},
-    options:{
-      responsive:true,maintainAspectRatio:false,animation:false,
-      scales:{
-        x:{type:'linear',min:xmin,max:xmax,title:{display:true,text:xlabel,color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10}},grid:{color:CHT.axGrid}},
-        y:{min:0,max:1,title:{display:true,text:'F(x)',color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10}},grid:{color:CHT.axGrid}}
-      },
-      plugins:{legend:{labels:{color:'#333',font:{size:10}}}}
-    },
-    plugins:[whiteBackground()]
-  });
+function momentValues(R){
+  if (R.momMode === 'none') return null;
+  if (R.momMode === 'data') return {m:arrMean(R.clean), s:arrStd(R.clean), sym:'x̄', ssym:'s'};
+  return {m:R.fit.meanFit, s:isFinite(R.fit.stdFit) ? R.fit.stdFit : 0, sym:'μ', ssym:'σ'};
 }
-
-/* ═══════════════════════════════ DRAW COMBINED ═══════════════════════ */
-function drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,ksR,chiR,lilR,adR,ylimMax,binMeth,momMode,invLine){
-  document.getElementById('combPH').style.display='none';
-  const canvas=document.getElementById('combChart');canvas.style.display='block';
-  if(charts.combChart){charts.combChart.destroy();charts.combChart=null;}
-  const edges=calcBins(clean,xmin,xmax,binMeth||'fd');
-  const hist=histPDF(clean,edges);
-  const ecdf=ecdfPts(clean);
-  const mv=momentValues(fit,clean,momMode||'fitted');
-  const mFit=mv.m, sFit=mv.s;
-  const yLOpts = ylimMax ? {min:0,max:ylimMax} : {beginAtZero:true};
-
-  charts.combChart=new Chart(canvas,{
-    type:'bar',
-    data:{
-      labels:hist.centers.map(c=>c.toFixed(3)),
-      datasets:[
-        {label:'Histogram',data:hist.densities,backgroundColor:CHT.hist,borderColor:CHT.histBorder,borderWidth:0.5,barPercentage:1,categoryPercentage:1,yAxisID:'yL',order:4},
-        {label:`PDF — ${dist}`,data:hist.centers.map(c=>fit.pdf(c)),type:'line',borderColor:CHT.pdf,borderWidth:2,pointRadius:0,fill:false,tension:.4,yAxisID:'yL',order:3},
-        {label:'EDF (empirical)',data:ecdf.map(pt=>({x:pt.x,y:pt.p})),type:'line',borderColor:CHT.edf,borderWidth:1.2,pointRadius:2,pointBackgroundColor:CHT.edf,fill:false,stepped:true,yAxisID:'yR',order:2,xAxisID:'xLinear'},
-        {label:`CDF — ${dist}`,data:xs.map(x=>({x,y:fit.cdf(x)})),type:'line',borderColor:CHT.cdf,borderWidth:2,pointRadius:0,fill:false,tension:.3,yAxisID:'yR',order:1,xAxisID:'xLinear'}      ]
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,animation:false,
-      scales:{
-        x:{display:true,title:{display:true,text:xlabel,color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10},maxTicksLimit:10},grid:{color:CHT.axGrid}},
-        xLinear:{type:'linear',display:false,min:xmin,max:xmax},
-        yL:{type:'linear',position:'left',...yLOpts,title:{display:true,text:'f(x)',color:CHT.axTitle,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10}},grid:{color:CHT.axGrid}},
-        yR:{type:'linear',position:'right',min:0,max:1,title:{display:true,text:'F(x)',color:CHT.cdf,font:{size:11}},ticks:{color:CHT.axTick,font:{size:10}},grid:{drawOnChartArea:false}}
-      },
-      plugins:{legend:{labels:{color:'#333',font:{size:10}}}}
-    },
-    plugins:[whiteBackground(), annotationPlugin(mFit,sFit,'yL',invLine||null)]
-  });
-
-  document.getElementById('combInfo').innerHTML='';
+// plot range: user limits, otherwise data range ± 10 % (extended to show x(p))
+function plotRange(R){
+  let lo = parseFloat(document.getElementById('xlimMin').value);
+  let hi = parseFloat(document.getElementById('xlimMax').value);
+  const mn = arrMin(R.clean), mx = arrMax(R.clean);
+  let r = mx-mn; if (!(r > 0)) r = Math.abs(mn) || 1;
+  let aLo = mn - 0.1*r, aHi = mx + 0.1*r;
+  if (mn >= 0 && aLo < 0) aLo = 0;
+  if (R.inv && isFinite(R.inv.val) && R.inv.val >= mn-r && R.inv.val <= mx+r) {   // show x(p) unless far out
+    if (R.inv.val < aLo) aLo = R.inv.val - 0.05*r;
+    if (R.inv.val > aHi) aHi = R.inv.val + 0.05*r;
+  }
+  const step = niceStep((aHi-aLo)/8);                 // round the automatic range to tick multiples
+  aLo = Math.floor(aLo/step + 1e-9)*step; aHi = Math.ceil(aHi/step - 1e-9)*step;
+  if (mn >= 0 && aLo < 0) aLo = 0;
+  aLo = +aLo.toPrecision(12); aHi = +aHi.toPrecision(12);
+  if (!isFinite(lo)) lo = aLo;
+  if (!isFinite(hi)) hi = aHi;
+  if (!(hi > lo)) { lo = aLo; hi = aHi; }
+  return [lo, hi];
 }
-
-/* ═══════════════════════════════ WHITE BACKGROUND PLUGIN ══════════════ */
+function niceStep(v){   // 1, 2, 2.5 or 5 × 10^k, at least v
+  const e = Math.pow(10, Math.floor(Math.log10(v))), f = v/e;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10)*e;
+}
+function niceCeil(v){
+  if (!(v > 0)) return 1;
+  const e = Math.pow(10, Math.floor(Math.log10(v))), f = v/e;
+  const steps = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+  for (const s of steps) if (f <= s + 1e-12) return s*e;
+  return 10*e;
+}
 function whiteBackground(){
-  return{
-    id:'whiteBackground',
-    beforeDraw(chart){
-      const ctx=chart.ctx;
-      ctx.save();ctx.globalCompositeOperation='destination-over';
-      ctx.fillStyle='white';ctx.fillRect(0,0,chart.width,chart.height);ctx.restore();
-    }
-  };
+  return {id:'whiteBackground', beforeDraw(chart){
+    const ctx = chart.ctx; ctx.save(); ctx.globalCompositeOperation = 'destination-over';
+    ctx.fillStyle = 'white'; ctx.fillRect(0, 0, chart.width, chart.height); ctx.restore();
+  }};
 }
-
-/* ═══════════════════════════════ ANNOTATION PLUGIN ══════════════════ */
-// invLine: {val, p} — draws the inverse probability vertical on PDF too
-function annotationPlugin(mFit,sFit,yAxisID,invLine){
-  return{
-    id:'vlines',
-    afterDraw(chart){
-      const ctx=chart.ctx;
-      const xsc=chart.scales.x;
-      const ysc=chart.scales[yAxisID||'y'];
-      if(!xsc||!ysc)return;
-      const labels=chart.data.labels;
-      function xpx(val){
-        if(xsc.type==='linear')return xsc.getPixelForValue(val);
-        let bi=0,bd=Infinity;
-        labels.forEach((l,i)=>{const dv=Math.abs(parseFloat(l)-val);if(dv<bd){bd=dv;bi=i;}});
-        return xsc.getPixelForValue(bi);
+// vertical marker lines at their exact x positions (moment lines and x(p))
+function annotationPlugin(mv, yAxisID, inv, dist){
+  return {id:'vlines', afterDatasetsDraw(chart){
+    const ctx = chart.ctx, xs = chart.scales.x, ys = chart.scales[yAxisID], a = chart.chartArea;
+    if (!xs || !ys) return;
+    const inside = v => isFinite(v) && v >= xs.min && v <= xs.max;
+    const X = v => xs.getPixelForValue(v);
+    const y0 = ys.getPixelForValue(Math.max(ys.min, 0));
+    const yTop = a.top + 0.07*(a.bottom-a.top), yMid = a.top + 0.35*(a.bottom-a.top);
+    const line = (x, y1, col, w, dash) => { ctx.strokeStyle = col; ctx.lineWidth = w; ctx.setLineDash(dash); ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke(); };
+    const label = (x, y, txt, col, bold) => { ctx.save(); ctx.setLineDash([]); ctx.fillStyle = col; ctx.font = (bold ? 'bold ' : '') + '9px monospace'; ctx.translate(x+9, y+4); ctx.rotate(Math.PI/2); ctx.fillText(txt, 0, 0); ctx.restore(); };
+    ctx.save();
+    ctx.beginPath(); ctx.rect(a.left, a.top, a.right-a.left, a.bottom-a.top); ctx.clip();
+    if (mv && isFinite(mv.m)) {
+      if (inside(mv.m)) { line(X(mv.m), yTop, CHT.mean, 1.3, [5, 3]); label(X(mv.m), yTop, `${mv.sym} = ${fmt(mv.m, 5)}`, CHT.mean, true); }
+      if (mv.s > 0) {
+        [[mv.m-mv.s, `${mv.sym}−${mv.ssym}`], [mv.m+mv.s, `${mv.sym}+${mv.ssym}`]].forEach(([v, t]) => {
+          if (!inside(v) || (v <= 0 && DIST_SUPPORT[dist] !== 'real')) return;
+          line(X(v), yMid, CHT.sigma, 0.9, [3, 3]); label(X(v), yMid, `${t} = ${fmt(v, 5)}`, CHT.sigma, false);
+        });
       }
-      const yb  = ysc.getPixelForValue(0);
-      const yt90= ysc.getPixelForValue(ysc.max*0.93);
-      const yt65= ysc.getPixelForValue(ysc.max*0.65);
-      ctx.save();
-      // mean & ±σ lines (skipped when mFit is NaN, i.e. momMode='none')
-      if(isFinite(mFit)){
-        ctx.strokeStyle=CHT.mean;ctx.lineWidth=1.3;ctx.setLineDash([5,3]);
-        ctx.beginPath();ctx.moveTo(xpx(mFit),yb);ctx.lineTo(xpx(mFit),yt90);ctx.stroke();
-        ctx.fillStyle=CHT.mean;ctx.font='bold 9px monospace';
-        ctx.save();ctx.translate(xpx(mFit)+10,yt90+4);ctx.rotate(Math.PI/2);
-        ctx.fillText('μ = '+mFit.toFixed(3),0,0);ctx.restore();
-        if(sFit>0){
-          const posOnly=['lognormal','weibull','gamma','rayleigh','frechet','loglogistic','exponential'];
-          [mFit-sFit,mFit+sFit].forEach((v,i)=>{
-            if(v<=0 && posOnly.includes(fitResult?.dist)) return;
-            ctx.strokeStyle=CHT.sigma;ctx.lineWidth=0.9;ctx.setLineDash([3,3]);
-            ctx.beginPath();ctx.moveTo(xpx(v),yb);ctx.lineTo(xpx(v),yt65);ctx.stroke();
-            ctx.fillStyle=CHT.sigma;ctx.font='9px monospace';
-            ctx.save();ctx.translate(xpx(v)+10,yt65+4);ctx.rotate(Math.PI/2);
-            ctx.fillText((i===0?'μ−σ':'μ+σ')+' = '+v.toFixed(3),0,0);ctx.restore();
-          });
-        }
-      }
-      // inverse probability line (always drawn when requested)
-      if(invLine && isFinite(invLine.val)){
-        const iv=invLine.val;
-        ctx.strokeStyle=CHT.inv;ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
-        ctx.beginPath();ctx.moveTo(xpx(iv),yb);ctx.lineTo(xpx(iv),yt90);ctx.stroke();
-        ctx.fillStyle=CHT.inv;ctx.font='bold 9px monospace';
-        ctx.save();ctx.translate(xpx(iv)+10,yt90+4);ctx.rotate(Math.PI/2);
-        ctx.fillText('x(p='+invLine.p+') = '+iv.toFixed(3),0,0);ctx.restore();
-      }
-      ctx.restore();
     }
-  };
+    if (inv && inside(inv.val)) { line(X(inv.val), yTop, CHT.inv, 1.5, [4, 4]); label(X(inv.val), yTop, `x(p=${String(inv.p)}) = ${fmt(inv.val, 5)}`, CHT.inv, true); }
+    ctx.restore();
+  }};
 }
-
-/* ═══════════════════════════════ INVERSE ═════════════════════════════ */
-function calcInverse(){
-  if(!fitResult){document.getElementById('invResult').textContent='Run analysis first';return}
-  const p=parseFloat(document.getElementById('invProb').value);
-  if(isNaN(p)||p<0||p>=1){document.getElementById('invResult').textContent='Invalid p';return}
-  // p=0 means clear the inverse line from all charts
-  if(p===0){
-    document.getElementById('invResult').textContent='—';
-    if(charts.cdfChart){
-      charts.cdfChart.data.datasets=charts.cdfChart.data.datasets.filter(d=>!d.label.startsWith('x(p'));
-      charts.cdfChart.update();
-    }
-    if(fitResult){
-      const {clean,fit,xmin,xmax,xlabel,dist,binMeth,momMode}=fitResult;
-      const xlo=Math.max(1e-300,fit.icdf(0.001)||xmin);
-      const xhi=fit.icdf(0.999)||xmax;
-      const xs=linspace(Math.max(xmin,xlo),Math.min(xmax,xhi),500);
-      const ylimRaw=parseFloat(document.getElementById('ylimMax').value);
-      const ylimMax=isFinite(ylimRaw)&&ylimRaw>0?ylimRaw:null;
-      drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax,binMeth,momMode,null);
-      drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,null,null,null,null,ylimMax,binMeth,momMode,null);
-    }
+function axisX(xmin, xmax, xlabel){
+  return {type:'linear', min:xmin, max:xmax, title:{display:true, text:xlabel, color:CHT.axTitle, font:{size:11}},
+    ticks:{color:CHT.axTick, font:{size:10}, maxTicksLimit:12}, grid:{color:CHT.axGrid}};
+}
+function chartBase(scales){
+  return {responsive:true, maintainAspectRatio:false, animation:false,
+    interaction:{mode:'nearest', intersect:false, axis:'x'},
+    scales,
+    plugins:{legend:{labels:{color:'#333', font:{size:10}}},
+      tooltip:{filter:item => item.dataset.label !== 'Histogram',
+        callbacks:{label:c => `${c.dataset.label}: x = ${fmt(c.parsed.x, 5)}, y = ${fmt(c.parsed.y, 5)}`}}}};
+}
+function ecdfPoints(clean, xmin, xmax){
+  const s = sortNum(clean), n = s.length, pts = [{x:Math.min(xmin, s[0]), y:0}, {x:s[0], y:0}];
+  const step = n > 4000 ? Math.ceil(n/4000) : 1;
+  for (let i=0;i<n;i+=step) pts.push({x:s[i], y:(i+1)/n});
+  if ((n-1) % step) pts.push({x:s[n-1], y:1});
+  pts.push({x:Math.max(xmax, s[n-1]), y:1});
+  return pts;
+}
+function renderCharts(){
+  const R = fitResult; if (!R) return;
+  // display settings are read at drawing time, so they apply without re-running the analysis
+  R.binMeth = document.getElementById('binMethod').value;
+  R.momMode = document.getElementById('momentMode').value;
+  R.xlabel  = document.getElementById('xlabel').value || 'x';
+  const [xmin, xmax] = plotRange(R);
+  R.xmin = xmin; R.xmax = xmax;
+  if (R.inv) document.getElementById('invResult').textContent =
+    `x(p=${String(R.inv.p)}) = ${fmt(R.inv.val, 6)}` + (invOutside(R) ? ' · outside plot' : '');
+  const name = DIST_NAMES[R.dist], n = R.clean.length;
+  const edges = calcBins(R.clean, R.binMeth), counts = histCounts(R.clean, edges);
+  R.bins = edges.length-1;
+  if (typeof Chart === 'undefined') {
+    ['pdfPH', 'cdfPH', 'combPH'].forEach(id => {
+      const p = document.getElementById(id); p.style.display = '';
+      p.lastElementChild.textContent = 'Chart library could not be loaded (no internet?) — the results are in the summary log.';
+    });
     return;
   }
-  const val=fitResult.fit.icdf(p);
-  document.getElementById('invResult').textContent=`x(p=${p}) = ${val.toFixed(5)}`;
-  const invLine={val,p};
-
-  // — CDF: vertical + horizontal dashed lines meeting at (val, p)
-  if(charts.cdfChart){
-    charts.cdfChart.data.datasets=charts.cdfChart.data.datasets.filter(d=>!d.label.startsWith('x(p'));
-    charts.cdfChart.data.datasets.push({
-      label:`x(p=${p}) = ${val.toFixed(3)}`,
-      data:[{x:fitResult.xmin,y:p},{x:val,y:p},{x:val,y:0}],
-      borderColor:CHT.inv,borderWidth:1.5,borderDash:[4,4],
-      pointRadius:[0,5,0],pointBackgroundColor:CHT.inv,
-      pointBorderColor:CHT.inv,fill:false,order:0,tension:0
-    });
-    charts.cdfChart.update();
+  const dens = counts.map((c, i) => c/(n*(edges[i+1]-edges[i])));
+  const hist = [];
+  for (let i=0;i<dens.length;i++) hist.push({x:edges[i], y:0}, {x:edges[i], y:dens[i]}, {x:edges[i+1], y:dens[i]}, {x:edges[i+1], y:0});
+  let xs = linspace(xmin, xmax, 801);
+  if (R.dist === 'uniform') xs = xs.concat([R.fit.p1, R.fit.p2].filter(v => v > xmin && v < xmax)).sort((a, b) => a-b);
+  const pdfPts = xs.map(x => ({x, y:R.fit.pdf(x)})).filter(p => isFinite(p.y));
+  const cdfPts = xs.map(x => ({x, y:R.fit.cdf(x)}));
+  const ylimUser = parseFloat(document.getElementById('ylimMax').value);
+  let yMax;
+  if (ylimUser > 0) yMax = ylimUser;
+  else {
+    const hMax = arrMax(dens), pMax = pdfPts.length ? arrMax(pdfPts.map(p => p.y)) : 0;
+    yMax = niceCeil(1.05*(pMax > 3*hMax && hMax > 0 ? 3*hMax : Math.max(hMax, pMax)));
   }
+  const mv = momentValues(R), inv = R.inv;
+  const histDS = {label:'Histogram', data:hist, borderColor:CHT.histBorder, backgroundColor:CHT.hist, borderWidth:1,
+    fill:'origin', pointRadius:0, pointHitRadius:0, tension:0, order:3};
+  const pdfDS = {label:`PDF — ${name}`, data:pdfPts, borderColor:CHT.pdf, borderWidth:2, pointRadius:0, fill:false, tension:0, order:1};
+  const edf = ecdfPoints(R.clean, xmin, xmax);
+  const edfDS = {label:'EDF (empirical)', data:edf, borderColor:CHT.edf, backgroundColor:CHT.edf, borderWidth:1.2,
+    pointRadius:c => (c.dataIndex < 2 || c.dataIndex === edf.length-1 || n > 300) ? 0 : 2, fill:false, stepped:'before', order:2};
+  const cdfDS = {label:`CDF — ${name}`, data:cdfPts, borderColor:CHT.cdf, borderWidth:2, pointRadius:0, fill:false, tension:0, order:1};
+  const yTitle = (t, c) => ({display:true, text:t, color:c || CHT.axTitle, font:{size:11}});
+  const tick = {color:CHT.axTick, font:{size:10}};
 
-  // — PDF & Combined: redraw with inverse line via the standard draw functions
-  if(fitResult){
-    const {clean,fit,xmin,xmax,xlabel,dist,binMeth,momMode}=fitResult;
-    const xlo=Math.max(1e-300,fit.icdf(0.001)||xmin);
-    const xhi=fit.icdf(0.999)||xmax;
-    const xs=linspace(Math.max(xmin,xlo),Math.min(xmax,xhi),500);
-    const ylimRaw=parseFloat(document.getElementById('ylimMax').value);
-    const ylimMax=isFinite(ylimRaw)&&ylimRaw>0?ylimRaw:null;
-    if(charts.pdfChart) drawPDF(clean,fit,xs,xmin,xmax,xlabel,dist,ylimMax,binMeth,momMode,invLine);
-    if(charts.combChart) drawCombined(clean,fit,xs,xmin,xmax,xlabel,dist,null,null,null,null,ylimMax,binMeth,momMode,invLine);
+  const make = (key, canvasId, phId, datasets, scales, plugins) => {
+    if (charts[key]) charts[key].destroy();
+    document.getElementById(phId).style.display = 'none';
+    const cv = document.getElementById(canvasId); cv.style.display = 'block';
+    charts[key] = new Chart(cv, {type:'line', data:{datasets}, options:chartBase(scales), plugins:[whiteBackground()].concat(plugins)});
+  };
+  make('pdfChart', 'pdfChart', 'pdfPH', [histDS, pdfDS],
+    {x:axisX(xmin, xmax, R.xlabel), y:{min:0, max:yMax, title:yTitle('f(x)'), ticks:tick, grid:{color:CHT.axGrid}}},
+    [annotationPlugin(mv, 'y', inv, R.dist)]);
+  const cdfSets = [edfDS, cdfDS];
+  if (inv && isFinite(inv.val)) cdfSets.push({label:`x(p=${String(inv.p)}) = ${fmt(inv.val, 5)}`,
+    data:[{x:xmin, y:inv.p}, {x:inv.val, y:inv.p}, {x:inv.val, y:0}], borderColor:CHT.inv, borderWidth:1.5, borderDash:[4, 4],
+    pointRadius:[0, 5, 0], pointBackgroundColor:CHT.inv, pointBorderColor:CHT.inv, fill:false, tension:0, order:0});
+  make('cdfChart', 'cdfChart', 'cdfPH', cdfSets,
+    {x:axisX(xmin, xmax, R.xlabel), y:{min:0, max:1, title:yTitle('F(x)'), ticks:tick, grid:{color:CHT.axGrid}}}, []);
+  make('combChart', 'combChart', 'combPH',
+    [Object.assign({}, histDS, {data:hist.slice(), yAxisID:'yL'}), Object.assign({}, pdfDS, {data:pdfPts.slice(), yAxisID:'yL'}),
+     Object.assign({}, edfDS, {data:edf.slice(), yAxisID:'yR'}), Object.assign({}, cdfDS, {data:cdfPts.slice(), yAxisID:'yR', order:0})],
+    {x:axisX(xmin, xmax, R.xlabel),
+     yL:{type:'linear', position:'left', min:0, max:yMax, title:yTitle('f(x)'), ticks:tick, grid:{color:CHT.axGrid}},
+     yR:{type:'linear', position:'right', min:0, max:1, title:yTitle('F(x)', CHT.cdf), ticks:tick, grid:{drawOnChartArea:false}}},
+    [annotationPlugin(mv, 'yL', inv, R.dist)]);
+}
+
+/* ═══════════════════════════════ INVERSE PROBABILITY ═════════════════ */
+function invOutside(R){ return !!(R.inv && R.xmin !== undefined && (R.inv.val < R.xmin || R.inv.val > R.xmax)); }
+function calcInverse(){
+  const out = document.getElementById('invResult');
+  if (!fitResult) { out.textContent = 'Run analysis first'; return; }
+  const el = document.getElementById('invProb');
+  const raw = el.value.trim().replace(',', '.');
+  const bad = el.validity && el.validity.badInput;          // text the browser cannot read as a number
+  const p = bad ? NaN : (raw === '' ? 0 : Number(raw));
+  if (!(p >= 0 && p < 1)) { fitResult.inv = null; out.textContent = 'Enter p with 0 ≤ p < 1 (0 = no line)'; }
+  else if (p === 0) { fitResult.inv = null; out.textContent = '—'; }
+  else {
+    const v = fitResult.fit.icdf(p);
+    fitResult.inv = {p, val:v};
+    out.textContent = `x(p=${p}) = ${fmt(v, 6)}`;
   }
+  renderCharts();
+  renderLog();
 }
 
 /* ═══════════════════════════════ TABS ════════════════════════════════ */
 function showTab(idx){
-  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===idx));
-  document.querySelectorAll('.tabpanel').forEach((p,i)=>p.classList.toggle('active',i===idx));
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+  document.querySelectorAll('.tabpanel').forEach((p, i) => p.classList.toggle('active', i === idx));
 }
 
-/* ═══════════════════════════════ SAVE / EXPORT ══════════════════════ */
-function getActiveCanvas(){
-  const panel=document.querySelector('.tabpanel.active');
-  return panel?panel.querySelector('canvas'):null;
+/* ═══════════════════════════════ SAVE / EXPORT ═══════════════════════ */
+const CHART_FILES = [['pdfChart', 'distribution_pdf'], ['cdfChart', 'distribution_cdf'], ['combChart', 'distribution_combined']];
+// renders a chart at EXPORT_DPR × resolution — also when its tab is not open
+function chartToPNG(key){
+  const ch = charts[key]; if (!ch) return null;
+  const panel = ch.canvas.closest('.tabpanel'), hidden = panel && !panel.classList.contains('active');
+  if (hidden) panel.style.display = 'block';
+  const old = ch.options.devicePixelRatio;
+  ch.options.devicePixelRatio = EXPORT_DPR; ch.resize();
+  const url = ch.canvas.toDataURL('image/png');
+  ch.options.devicePixelRatio = old;
+  if (hidden) panel.style.display = '';
+  ch.resize();                                    // back to screen resolution (re-laid out when the tab opens)
+  return url;
 }
-function downloadCanvas(canvas,name){
-  const a=document.createElement('a');a.href=canvas.toDataURL('image/png');a.download=name;a.click();
+function downloadURL(url, name){ const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+function chartsReady(){
+  if (typeof Chart === 'undefined') { setStatus('Charts are not available: the chart library could not be loaded.', 'err'); return false; }
+  if (!fitResult || !charts.pdfChart) { setStatus('Run the analysis first.', 'err'); return false; }
+  return true;
 }
-
 function savePNG(){
-  const c=getActiveCanvas();
-  if(!c){alert('Run analysis first, or switch to a chart tab.');return}
-  const idx=[...document.querySelectorAll('.tab')].findIndex(t=>t.classList.contains('active'));
-  downloadCanvas(c,['distribution_pdf','distribution_cdf','distribution_combined'][idx]+'.png');
+  if (!chartsReady()) return;
+  const idx = [...document.querySelectorAll('.tab')].findIndex(t => t.classList.contains('active'));
+  const [key, name] = CHART_FILES[Math.max(0, idx)];
+  const url = chartToPNG(key); if (url) downloadURL(url, name + '.png');
 }
-
 function saveAllPNG(){
-  if(!fitResult){alert('Run analysis first.');return}
-  [['pdfChart','distribution_pdf'],['cdfChart','distribution_cdf'],['combChart','distribution_combined']].forEach(([id,name])=>{
-    const c=document.getElementById(id);
-    if(c&&c.style.display!=='none') downloadCanvas(c,name+'.png');
-  });
+  if (!chartsReady()) return;
+  const urls = CHART_FILES.map(([key, name]) => [chartToPNG(key), name]);
+  urls.forEach(([url, name], i) => { if (url) setTimeout(() => downloadURL(url, name + '.png'), 300*i); });
 }
-
 function saveCSV(){
-  if(!fitResult){alert('Run analysis first.');return}
-  const {clean,dist,fit}=fitResult;
-  const p1l=DIST_P1_LABELS[dist]||'p1', p2l=DIST_P2_LABELS[dist]||'p2';
-  let csv=`# Distribution Fitting Tool — UPCE\n# Özgür Yurdakul, Faculty of Transport Engineering, University of Pardubice\n`;
-  csv+=`# Distribution: ${dist}\n# ${p1l} = ${fit.p1}\n# ${p2l} = ${isNaN(fit.p2)?'N/A':fit.p2}\n`;
-  csv+=`# Mean (fit) = ${isFinite(fit.meanFit)?fit.meanFit.toFixed(6):'Inf'}\n# Std (fit) = ${isFinite(fit.stdFit)?fit.stdFit.toFixed(6):'Inf'}\n# N = ${clean.length}\n#\n`;
-  csv+=`x,pdf,cdf\n`;
-  linspace(fitResult.xmin,fitResult.xmax,500).forEach(x=>{
-    csv+=`${x.toFixed(6)},${fit.pdf(x).toFixed(8)},${fit.cdf(x).toFixed(8)}\n`;
-  });
-  csv+=`\n# Cleaned data\nindex,value\n`;
-  clean.forEach((v,i)=>{csv+=`${i+1},${v}\n`});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
-  a.download='distribution_fit_data.csv';a.click();
+  if (!fitResult) { setStatus('Run the analysis first.', 'err'); return; }
+  const R = fitResult, f = R.fit, g = R.gof, L = DIST_PARAM_LABELS[R.dist];
+  const num = v => (typeof v === 'number' && isFinite(v)) ? String(+v.toPrecision(12)) : (v === Infinity ? 'Inf' : 'NaN');
+  const pOf = p => p === null ? 'pending' : num(p);
+  // comment lines avoid commas so that spreadsheet programs keep each one in a single cell
+  const rows = [
+    `# Distribution Fitting Tool ${VERSION} — UPCE; exported ${new Date().toISOString()}`,
+    '# Özgür Yurdakul; Faculty of Transport Engineering; University of Pardubice',
+    `# Data source: ${rawInfo ? rawInfo.label : ''}`,
+    `# Distribution: ${DIST_NAMES[R.dist]}; estimator: ${ESTIMATORS[R.dist].replace(/,/g, ';')}`,
+    `# ${L[0]} = ${num(f.p1)}`];
+  if (L[1]) rows.push(`# ${L[1]} = ${num(f.p2)}`);
+  rows.push(`# Mean (fit) = ${num(f.meanFit)}`, `# Std (fit) = ${num(f.stdFit)}`);
+  rows.push(`# N loaded = ${R.rawN}; N used = ${R.clean.length}`);
+  rows.push(`# Outlier rule: ${OUTLIER_NAMES[R.outMeth].replace(/,/g, ';')}; removed (${R.outlierVals.length}): ${R.outlierVals.map(num).join(' ') || 'none'}`);
+  rows.push(`# K-S: D = ${num(g.D)}; p = ${pOf(g.pKS)} (parametric bootstrap; B = ${g.B})`);
+  rows.push(`# A-D: A2 = ${num(g.A)}; p = ${pOf(g.pAD)} (parametric bootstrap; B = ${g.B})`);
+  rows.push(g.chi.applicable ? `# Chi-squared: X2 = ${num(g.chi.stat)}; df = ${g.chi.df}; p = ${num(g.chi.p)}` : '# Chi-squared: not applicable (n too small)');
+  rows.push(g.lil.applicable ? `# Lilliefors: D = ${num(g.lil.stat)}; p = ${num(g.lil.p)}` : '# Lilliefors: not applicable (Normal/LogNormal only)');
+  if (R.inv) rows.push(`# Inverse probability: x(p = ${num(R.inv.p)}) = ${num(R.inv.val)}`);
+  rows.push('#', 'x,pdf,cdf');
+  linspace(R.xmin, R.xmax, 500).forEach(x => rows.push(`${num(x)},${num(f.pdf(x))},${num(f.cdf(x))}`));
+  rows.push('', '# Cleaned data (values used in the fit)', 'index,value');
+  R.clean.forEach((v, i) => rows.push(`${i+1},${num(v)}`));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([rows.join('\n') + '\n'], {type:'text/csv'}));
+  a.download = 'distribution_fit_data.csv';
+  document.body.appendChild(a); a.click(); a.remove();
 }
 
 /* ═══════════════════════════════ LOG ═════════════════════════════════ */
-function distMode(d,p1,p2){
-  // Analytical mode for each distribution
-  if(d==='normal')      return p1;
-  if(d==='lognormal')   return Math.exp(p1 - p2*p2);
-  if(d==='weibull')     return p1>1 ? p2*Math.pow((p1-1)/p1, 1/p1) : 0;
-  if(d==='gamma')       return p1>1 ? (p1-1)*p2 : 0;
-  if(d==='rayleigh')    return p1;
-  if(d==='exponential') return 0;
-  if(d==='uniform')     return (p1+p2)/2;  // any value; convention = midpoint
-  if(d==='gumbel')      return p1;
-  if(d==='frechet')     return p2*Math.pow(p1/(p1+1), 1/p1);
-  if(d==='loglogistic') return p2>1 ? p1*Math.pow((p2-1)/(p2+1), 1/p2) : 0;
-  return NaN;
+function renderLog(){
+  const R = fitResult; if (!R) return;
+  const f = R.fit, g = R.gof, c = R.clean, L = DIST_PARAM_LABELS[R.dist];
+  const m = arrMean(c), s = arrStd(c);
+  const pad = t => (t + '                  ').slice(0, 18) + ': ';
+  const pv = (p, tag) => p === null ? 'p = … (computing)' : (!(p >= 0) ? 'p = n/a' : `${pEq(p)}${tag ? '  (' + tag + ')' : ''}`);
+  const verdict = p => p === null ? '…   ' : (!(p >= 0) ? 'n/a ' : (p < ALPHA ? 'FAIL' : 'PASS'));
+  const lines = [];
+  lines.push('===== Data =====');
+  if (rawInfo) lines.push(pad('Source') + `${rawInfo.label} (decimal ${rawInfo.decimal === ',' ? 'comma' : 'point'})`);
+  lines.push(pad('N loaded') + R.rawN);
+  lines.push(pad('Outlier rule') + OUTLIER_NAMES[R.outMeth]);
+  if (R.outMeth !== 'none') lines.push(pad(`Removed (${R.outlierVals.length})`) + (R.outlierVals.length ? R.outlierVals.map(v => fmt(v)).join(', ') : 'none'));
+  lines.push(pad('N used') + c.length);
+  lines.push(pad('Min / Max') + `${fmt(arrMin(c))} / ${fmt(arrMax(c))}`);
+  lines.push(pad('Mean (data)') + fmt(m));
+  lines.push(pad('Median (data)') + fmt(arrMedian(c)));
+  lines.push(pad('Std Dev (data)') + fmt(s) + '  (n−1)');
+  lines.push(pad('CoV (data)') + (m !== 0 ? fmt(100*s/Math.abs(m), 4) + ' %' : '—'));
+  lines.push('', `===== Fitted distribution: ${DIST_NAMES[R.dist]} =====`);
+  lines.push(pad('Estimator') + ESTIMATORS[R.dist]);
+  lines.push('-- Native parameters --');
+  lines.push(pad(L[0]) + fmt(f.p1, 8));
+  if (L[1]) lines.push(pad(L[1]) + fmt(f.p2, 8));
+  if (R.dist === 'exponential') lines.push(pad('1/λ (mean)') + fmt(1/f.p1, 8));
+  lines.push('-- Derived quantities --');
+  lines.push(pad('Mean (fit)') + fmt(f.meanFit));
+  lines.push(pad('Median (fit)') + fmt(f.icdf(0.5)));
+  lines.push(pad('Mode (fit)') + fmt(distMode(R.dist, f.p1, f.p2)));
+  lines.push(pad('Std Dev (fit)') + fmt(f.stdFit));
+  lines.push(pad('CoV (fit)') + (isFinite(f.stdFit) && isFinite(f.meanFit) && f.meanFit !== 0 ? fmt(100*f.stdFit/Math.abs(f.meanFit), 4) + ' %' : '—'));
+  lines.push('', '===== Goodness of fit (α = 0.05) =====');
+  lines.push(pad('Kolmogorov–Smirnov') + `${verdict(g.pKS)}  D = ${fmt(g.D, 4)}, ${pv(g.pKS, `parametric bootstrap, B = ${g.B}`)}`);
+  if (R.dist !== 'uniform') lines.push(pad('') + `classic K–S ${pEq(g.pKSclassic)} (parameters treated as known, as in MATLAB kstest; too high when they are fitted)`);
+  if (g.chi.applicable) lines.push(pad('Chi-squared') + `${g.chi.reject ? 'FAIL' : 'PASS'}  χ² = ${fmt(g.chi.stat, 4)}, df = ${g.chi.df} (${g.chi.k} equiprobable classes), ${pEq(g.chi.p)}`);
+  else lines.push(pad('Chi-squared') + `n/a   (${g.chi.reason})`);
+  if (g.lil.applicable) lines.push(pad('Lilliefors') + `${g.lil.reject ? 'FAIL' : 'PASS'}  D = ${fmt(g.lil.stat, 4)}, ${pEq(g.lil.p)}  (normality of ${R.dist === 'lognormal' ? 'ln x' : 'x'})`);
+  else lines.push(pad('Lilliefors') + 'n/a   (tests normality — Normal/LogNormal only)');
+  lines.push(pad('Anderson–Darling') + `${verdict(g.pAD)}  A² = ${fmt(g.A, 4)}, ${pv(g.pAD, `parametric bootstrap, B = ${g.B}`)}`);
+  if (R.dist === 'uniform') lines.push(pad('') + 'Uniform: a, b are the sample min and max, so K–S, A–D and χ² use the n − 2 interior values');
+  if (R.inv) lines.push('', '===== Inverse probability =====', pad(`x(p = ${String(R.inv.p)})`) + fmt(R.inv.val, 8) +
+    (invOutside(R) ? '  (outside the plotted x-range)' : ''));
+  lines.push('', '===== Histogram =====', pad('Bin rule') + `${BIN_NAMES[R.binMeth]} → ${R.bins || '—'} bins over [min, max]`);
+  document.getElementById('logBox').textContent = lines.join('\n');
 }
 
-/* native parameter description for each distribution */
-function distNativeParams(dist, p1, p2){
-  const f=(v)=>isFinite(v)?v.toFixed(6):'N/A';
-  switch(dist){
-    case 'normal':      return [`μ (mean)        : ${f(p1)}`, `σ (std dev)     : ${f(p2)}`];
-    case 'lognormal':   return [`μ_ln (log mean) : ${f(p1)}`, `σ_ln (log std)  : ${f(p2)}`];
-    case 'weibull':     return [`k (shape)       : ${f(p1)}`, `λ (scale)       : ${f(p2)}`];
-    case 'gamma':       return [`α (shape)       : ${f(p1)}`, `β (scale)       : ${f(p2)}`];
-    case 'rayleigh':    return [`σ (scale)       : ${f(p1)}`, null];
-    case 'exponential': return [`λ (rate)        : ${f(p1)}`, `1/λ (mean)      : ${f(1/p1)}`];
-    case 'uniform':     return [`a (min)         : ${f(p1)}`, `b (max)         : ${f(p2)}`];
-    case 'gumbel':      return [`μ (location)    : ${f(p1)}`, `β (scale)       : ${f(p2)}`];
-    case 'frechet':     return [`α (shape)       : ${f(p1)}`, `s (scale)       : ${f(p2)}`];
-    case 'loglogistic': return [`α (scale)       : ${f(p1)}`, `β (shape)       : ${f(p2)}`];
-    default:            return [`p1              : ${f(p1)}`, `p2              : ${f(p2)}`];
-  }
-}
-
-function buildLog(nRaw,nClean,nOut,outMeth,clean,fit,dist,ks,chi,lil,ad){
-  const m=arrMean(clean),s=arrStd(clean),med=arrMedian(clean);
-  const mode=distMode(dist,fit.p1,fit.p2);
-  const modeStr=isFinite(mode)?mode.toFixed(5):'—';
-  const nat=distNativeParams(dist,fit.p1,fit.p2).filter(x=>x!==null);
-  return `===== Data Summary =====
-N raw            : ${nRaw}
-N (after removal): ${nClean}  (removed: ${nOut}, method: ${outMeth})
-Min              : ${Math.min(...clean).toFixed(5)}
-Max              : ${Math.max(...clean).toFixed(5)}
-Mean (data)      : ${m.toFixed(5)}
-Median (data)    : ${med.toFixed(5)}
-Std Dev (data)   : ${s.toFixed(5)}
-CoV (data)       : ${(s/m*100).toFixed(3)} %
-
-===== Fitted Distribution (${dist}) =====
--- Native parameters --
-${nat.join('\n')}
--- Derived moments --
-Mean (fit)       : ${isFinite(fit.meanFit)?fit.meanFit.toFixed(5):'Inf'}
-Median (fit)     : ${isFinite(fit.icdf(0.5))?fit.icdf(0.5).toFixed(5):'Inf'}
-Mode (fit)       : ${modeStr}
-Std Dev (fit)    : ${isFinite(fit.stdFit)?fit.stdFit.toFixed(5):'Inf'}
-CoV (fit)        : ${isFinite(fit.stdFit)&&isFinite(fit.meanFit)?(fit.stdFit/fit.meanFit*100).toFixed(3)+' %':'—'}
-
-===== Goodness-of-Fit (α = 0.05) =====
-K-S test         : ${ks.reject?'FAIL':'PASS'}  (p = ${ks.p.toFixed(5)})
-Chi-squared      : ${chi.reject?'FAIL':'PASS'}  (p = ${chi.p.toFixed(5)})
-Lilliefors       : ${lil.reject?'FAIL':'PASS'}  (stat = ${lil.stat.toFixed(5)})
-Anderson-Darling : ${ad.reject?'FAIL':'PASS'}  (A² = ${ad.stat.toFixed(5)})`;
-}
-
-function setStatus(msg,state){
-  const b=document.getElementById('statusbar');b.className=state;
-  document.getElementById('stxt').textContent=msg;
+function setStatus(msg, state){
+  const b = document.getElementById('statusbar'); b.className = state;
+  document.getElementById('stxt').textContent = msg;
 }
 </script>
 </body>

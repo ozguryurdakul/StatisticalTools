@@ -172,7 +172,7 @@ select option{background:var(--panel2)}
 .sinfo .pass{color:var(--green)}.sinfo .fail{color:var(--warn)}.sinfo .lbl{color:var(--txt3)}
 
 /* ── marginal grid ── */
-#mgrid{display:grid;gap:14px}
+#mgrid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(380px,1fr))}
 
 /* ── sample table ── */
 .stbl{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px}
@@ -267,6 +267,7 @@ select option{background:var(--panel2)}
     <label class="chkrow"><input type="checkbox" id="gof-ad"  checked> Anderson-Darling (AD)</label>
     <label class="chkrow"><input type="checkbox" id="gof-chi" checked> Chi-squared (χ²)</label>
     <label class="chkrow"><input type="checkbox" id="gof-ll"  checked> Lilliefors (LL)</label>
+    <div class="hint">KS, AD, χ²: against the specified distribution · LL: parameters re-estimated from the sample. A Latin-hypercube sample is stratified, so it fits its target better than a random sample and p ≈ 1 is the expected result.</div>
   </div>
 
   <!-- Run -->
@@ -277,7 +278,13 @@ select option{background:var(--panel2)}
 
   <!-- Acknowledgement -->
   <div class="sec">
-    <div class="sec-title">Acknowledgement</div>
+    <div class="sec-title" >Related Tools</div>
+    <div style="font-size:11px;color:var(--txt2);line-height:1.65;">
+      <a href="https://ozguryurdakul.github.io/StatisticalTools/distribution_fitting_GUI.html"
+         style="color:var(--accent);font-weight:600;" target="_blank" rel="noopener">Distribution Fitting GUI</a><br>
+      <span style="font-size:10px;color:var(--txt3)">Fit probability distributions to measured data — use it to choose the distributions and mean/std entered here.</span>
+    </div>
+    <div class="sec-title" style="margin-top:14px">Acknowledgement</div>
     <div style="background:#1a2a4a;border:1px solid #3a5080;border-radius:5px;padding:7px 10px;margin-bottom:8px;font-size:11px;color:#a8c0e8;display:flex;align-items:center;gap:9px;">
       <span style="font-size:18px;flex-shrink:0">🇨🇿</span>
       <span><strong style="color:#d0e4ff">TA CR – SIGMA / M.ERA-NET Cofund</strong><br style="margin-bottom:2px">Technology Agency of the Czech Republic</span>
@@ -365,7 +372,7 @@ select option{background:var(--panel2)}
 'use strict';
 
 // ═══════════════════════════════════════════════════════════════════
-//  STATE  (prefilled exactly like MATLAB GUI)
+//  STATE  (default example)
 // ═══════════════════════════════════════════════════════════════════
 let vars = [
   {name:'fy',  dist:'normal',    p1:10, p2:2  },   // mean=10, std=2
@@ -381,10 +388,19 @@ let R = [
   [0.1, 0.4, 0.6, 1.0],
 ];
 
-let resultX   = null;
-let _lastRtgt = null;
+let resultX   = null;   // samples of the last run (n × d)
+let _lastRtgt = null;   // target / achieved correlation of the last run
 let _lastRfin = null;
+let _lastNames= null;   // variable names AS THEY WERE in the last run (exports must not follow later edits)
 let chartList = [];
+let activeRow = 0;      // variable row whose parameter meaning is shown in the header + hint
+const N_MAX   = 10000;  // largest sample size accepted
+
+// Small utilities
+function escHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+// Number → text with `sig` significant digits (never rounds a small value to 0.0000)
+function fmtNum(v,sig){return Number.isFinite(v)?String(Number(v.toPrecision(sig||6))):String(v)}
+function minMax(a){let lo=Infinity,hi=-Infinity;for(const v of a){if(v<lo)lo=v;if(v>hi)hi=v}return[lo,hi]}
 
 const DISTS = ['normal','lognormal','weibull','gamma','rayleigh',
                'exponential','uniform','gumbel','frechet','loglogistic'];
@@ -394,47 +410,94 @@ const DISTS = ['normal','lognormal','weibull','gamma','rayleigh',
 // background (see toNative()) just before sampling; the conversion is
 // logged next to the Sample Table for full transparency.
 const DINFO = {
-  normal:      {p1:'Mean  (μ)', p2:'Std dev  (σ)', single:false, hint:'Mean (any real) | Std dev > 0'},
+  normal:      {p1:'Mean',      p2:'Std dev',      single:false, hint:'Mean (any real) | Std dev > 0'},
   lognormal:   {p1:'Mean',      p2:'Std dev',      single:false, hint:'Mean > 0 | Std dev > 0  (converted to μ_ln, σ_ln)'},
-  weibull:     {p1:'Mean',      p2:'Std dev',      single:false, hint:'Mean > 0 | Std dev > 0  (converted to shape k, scale λ)'},
-  gamma:       {p1:'Mean',      p2:'Std dev',      single:false, hint:'Mean > 0 | Std dev > 0  (converted to shape α, scale β)'},
-  rayleigh:    {p1:'Mean',      p2:'— (auto)',     single:true,  hint:'Mean > 0  (single-parameter; std is fixed by mean → σ)'},
-  exponential: {p1:'Mean',      p2:'— (auto)',     single:true,  hint:'Mean > 0  (single-parameter; std = mean → rate λ=1/mean)'},
+  weibull:     {p1:'Mean',      p2:'Std dev',      single:false, hint:'Mean > 0 | Std dev > 0, CV = std/mean from 0.1 % to 300 %  (converted to shape k, scale λ)'},
+  gamma:       {p1:'Mean',      p2:'Std dev',      single:false, hint:'Mean > 0 | Std dev > 0, CV = std/mean from 0.1 % to 316 %  (converted to shape α, scale β)'},
+  rayleigh:    {p1:'Mean',      p2:'— (auto)',     single:true,  hint:'Mean > 0  (single-parameter: std is fixed at 52.3 % of the mean; converted to scale σ)'},
+  exponential: {p1:'Mean',      p2:'— (auto)',     single:true,  hint:'Mean > 0  (single-parameter: std equals the mean; converted to rate λ=1/mean)'},
   uniform:     {p1:'Min  (a)',  p2:'Max  (b)',     single:false, hint:'Min a (any real) | Max b > a'},
   gumbel:      {p1:'Mean',      p2:'Std dev',      single:false, hint:'Mean (any real) | Std dev > 0  (converted to location μ, scale β)'},
-  frechet:     {p1:'Mean',      p2:'Std dev',      single:false, hint:'Mean > 0 | Std dev > 0  (needs CV < ~1.2 for α>2; converted to shape α, scale s)'},
-  loglogistic: {p1:'Mean',      p2:'Std dev',      single:false, hint:'Mean > 0 | Std dev > 0  (needs CV < ~1.3 for β>2; converted to scale α, shape β)'},
+  frechet:     {p1:'Mean',      p2:'Std dev',      single:false, hint:'Mean > 0 | Std dev > 0, CV = std/mean from 0.1 % to 200 %  (converted to shape α, scale s)'},
+  loglogistic: {p1:'Mean',      p2:'Std dev',      single:false, hint:'Mean > 0 | Std dev > 0, CV = std/mean from 0.1 % to 200 %  (converted to scale α, shape β)'},
 };
 
 // ═══════════════════════════════════════════════════════════════════
 //  MATH
 // ═══════════════════════════════════════════════════════════════════
-function erf(x){const t=1/(1+.3275911*Math.abs(x));const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-.284496736)*t+.254829592)*t*Math.exp(-x*x);return x<0?-y:y}
-function erfinv(x){const a=.147,l=Math.log(1-x*x),A=2/(Math.PI*a)+l/2;return Math.sign(x)*Math.sqrt(Math.sqrt(A*A-l/a)-A)}
-function normcdf(x){return .5*(1+erf(x/Math.SQRT2))}
-function norminv(p){return Math.SQRT2*erfinv(2*p-1)}
-function normpdf(x){return Math.exp(-.5*x*x)/Math.sqrt(2*Math.PI)}
-
+// ── Gamma function family ─────────────────────────────────────────
+// Lanczos approximation (g=7, 9 terms). lgamma() is evaluated in LOG space, so
+// it never overflows (Γ(z) itself exceeds a double for z > 171.6 — which a
+// Gamma variable with CV < 7.6 % or a χ² test with n > ~1700 would hit).
+const LANCZOS_C=[.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+function lgamma(z){
+  if(z<.5)return Math.log(Math.PI/Math.abs(Math.sin(Math.PI*z)))-lgamma(1-z);
+  z-=1;let x=LANCZOS_C[0];for(let i=1;i<9;i++)x+=LANCZOS_C[i]/(z+i);
+  const t=z+7.5;return .5*Math.log(2*Math.PI)+(z+.5)*Math.log(t)-t+Math.log(x);
+}
+// ψ(x) and ψ'(x) for x>0: recurrence up to x≥6, then the asymptotic series.
+function digamma(x){let r=0;while(x<6){r-=1/x;x+=1}const f=1/(x*x);return r+Math.log(x)-.5/x-f*(1/12-f*(1/120-f*(1/252-f*(1/240-f/132))))}
+function trigamma(x){let r=0;while(x<6){r+=1/(x*x);x+=1}const f=1/(x*x);return r+1/x+f/2+f/x*(1/6-f*(1/30-f*(1/42-f/30)))}
 function gammaFn(z){
   if(z<.5)return Math.PI/(Math.sin(Math.PI*z)*gammaFn(1-z));
-  z--;const g=7,c=[.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
-  let x=c[0];for(let i=1;i<g+2;i++)x+=c[i]/(z+i);
-  const t=z+g+.5;return Math.sqrt(2*Math.PI)*Math.pow(t,z+.5)*Math.exp(-t)*x;
+  return Math.exp(lgamma(z));
 }
-function lgamma(z){return Math.log(Math.abs(gammaFn(z)))}
 
+// Regularised incomplete gamma: P(a,x) by series (x<a+1), Q(a,x) by continued
+// fraction (x≥a+1). Both need O(√a) terms when x≈a, hence the generous caps;
+// the convergence tests end the loops long before in ordinary cases.
+// Common prefactor x^a·e^(-x)/Γ(a). For a≥20 it is written with Stirling's series as
+//   √(a/2π)·exp(-a·φ(x/a) - δ(a)),  φ(u)=u-1-ln u,  δ(a)=1/(12a)-1/(360a³)+1/(1260a⁵),
+// which avoids subtracting numbers of size a·ln a (that would cost ~7 digits at a=10⁶).
+function gamPref(x,a){
+  if(a<20)return Math.exp(-x+a*Math.log(x)-lgamma(a));
+  const d=(x-a)/a,phi=Math.abs(d)<.5?d-Math.log1p(d):d-Math.log(x/a),a2=a*a;
+  return Math.sqrt(a/(2*Math.PI))*Math.exp(-a*phi-(1/(12*a)-1/(360*a*a2)+1/(1260*a2*a2*a)));
+}
 function gamcdf_lower(x,a){
   if(x<=0)return 0;
   let s=1,t=1;
-  for(let n=1;n<300;n++){t*=x/(a+n);s+=t;if(Math.abs(t)<1e-14*s)break}
-  return Math.exp(-x+a*Math.log(x)-lgamma(a))*s/a;
+  for(let n=1;n<200000;n++){t*=x/(a+n);s+=t;if(t<1e-16*s)break}
+  return gamPref(x,a)*s/a;
 }
 function gamcdf_upper(x,a){
   let b=x+1-a,c=1/1e-30,d=1/b,h=d;
-  for(let i=1;i<300;i++){const an=-i*(i-a);b+=2;d=an*d+b;if(Math.abs(d)<1e-30)d=1e-30;c=b+an/c;if(Math.abs(c)<1e-30)c=1e-30;d=1/d;const del=d*c;h*=del;if(Math.abs(del-1)<1e-14)break}
-  return Math.exp(-x+a*Math.log(x)-lgamma(a))*h;
+  for(let i=1;i<200000;i++){const an=-i*(i-a);b+=2;d=an*d+b;if(Math.abs(d)<1e-30)d=1e-30;c=b+an/c;if(Math.abs(c)<1e-30)c=1e-30;d=1/d;const del=d*c;h*=del;if(Math.abs(del-1)<1e-15)break}
+  return gamPref(x,a)*h;
 }
-function gamcdf(x,a){if(x<=0)return 0;return x<a+1?gamcdf_lower(x,a):1-gamcdf_upper(x,a)}
+function gamcdf(x,a){if(x<=0)return 0;return x<a+1?gamcdf_lower(x,a):1-gamcdf_upper(x,a)}   // P(a,x)
+function gamsf(x,a){if(x<=0)return 1;return x<a+1?1-gamcdf_lower(x,a):gamcdf_upper(x,a)}    // Q(a,x)=1-P
+
+// ── Normal distribution ───────────────────────────────────────────
+// erfc(x)=Q(½,x²): reuses the incomplete gamma above and keeps full RELATIVE
+// accuracy in the tails (the tail probabilities are what the AD test weighs).
+function erfc(x){
+  if(x<0)return 2-erfc(-x);
+  const x2=x*x;
+  return x2<1.5?1-gamcdf_lower(x2,.5):gamcdf_upper(x2,.5);
+}
+function erf(x){return 1-erfc(x)}
+function normcdf(x){return .5*erfc(-x/Math.SQRT2)}
+function normpdf(x){return Math.exp(-.5*x*x)/Math.sqrt(2*Math.PI)}
+// Φ⁻¹(p): Acklam's rational approximation (rel. error 1.2e-9) polished by one
+// Halley step against normcdf() → accurate to ~1e-15. Upper half by symmetry.
+function norminv(p){
+  if(Number.isNaN(p))return NaN;
+  if(p<=0)return -Infinity;if(p>=1)return Infinity;
+  if(p>.5)return -norminv(1-p);
+  let x;
+  if(p<.02425){
+    const q=Math.sqrt(-2*Math.log(p));
+    x=(((((-7.784894002430293e-03*q-3.223964580411365e-01)*q-2.400758277161838)*q-2.549732539343734)*q+4.374664141464968)*q+2.938163982698783)/
+      ((((7.784695709041462e-03*q+3.224671290700398e-01)*q+2.445134137142996)*q+3.754408661907416)*q+1);
+  }else{
+    const q=p-.5,r=q*q;
+    x=(((((-3.969683028665376e+01*r+2.209460984245205e+02)*r-2.759285104469687e+02)*r+1.383577518672690e+02)*r-3.066479806614716e+01)*r+2.506628277459239)*q/
+      (((((-5.447609879822406e+01*r+1.615858368580409e+02)*r-1.556989798598866e+02)*r+6.680131188771972e+01)*r-1.328068155288572e+01)*r+1);
+  }
+  const e=normcdf(x)-p,u=e*Math.sqrt(2*Math.PI)*Math.exp(x*x/2);
+  return x-u/(1+x*u/2);
+}
 
 function gaminv(p,a){
   if(p<=0)return 0;if(p>=1)return Infinity;
@@ -445,16 +508,16 @@ function gaminv(p,a){
   if(!isFinite(x)||x<=0)x=a;
   // Safeguarded Newton: maintain bracket [lo,hi] with F(lo)<p<F(hi);
   // bisect whenever a step is non-finite or leaves the bracket.
-  // (Replaces the unguarded Newton that diverged for a∈(1.2,2.6), small p.)
+  // (An unguarded Newton diverges for a∈(1.2,2.6) at small p.)
   let lo=0,hi=Infinity;
   for(let i=0;i<200;i++){
     const fx=gamcdf(x,a)-p;
-    if(Math.abs(fx)<=1e-14)break;
+    if(Math.abs(fx)<=1e-14*p)break;
     if(fx>0)hi=Math.min(hi,x);else lo=Math.max(lo,x);
-    const fpx=Math.exp((a-1)*Math.log(x)-x-lgamma(a));
+    const fpx=gamPref(x,a)/x;
     let xn=x-fx/fpx;
     if(!isFinite(xn)||xn<=lo||xn>=hi) xn=isFinite(hi)?0.5*(lo+hi):2*x;
-    if(Math.abs(xn-x)<=1e-12*Math.max(1,x)){x=xn;break}
+    if(Math.abs(xn-x)<=1e-12*x){x=xn;break}
     x=xn;
   }
   return x;
@@ -464,22 +527,22 @@ function logninv(p,mu,s){return Math.exp(mu+s*norminv(p))}
 function lognpdf(x,mu,s){if(x<=0)return 0;return Math.exp(-.5*((Math.log(x)-mu)/s)**2)/(x*s*Math.sqrt(2*Math.PI))}
 function logncdf(x,mu,s){if(x<=0)return 0;return normcdf((Math.log(x)-mu)/s)}
 
-function wblinv(p,sc,sh){return sc*Math.pow(-Math.log(1-p),1/sh)}
+function wblinv(p,sc,sh){return sc*Math.pow(-Math.log1p(-p),1/sh)}
 function wblpdf(x,sc,sh){if(x<=0)return 0;const z=x/sc;return(sh/sc)*Math.pow(z,sh-1)*Math.exp(-Math.pow(z,sh))}
-function wblcdf(x,sc,sh){if(x<=0)return 0;return 1-Math.exp(-Math.pow(x/sc,sh))}
+function wblcdf(x,sc,sh){if(x<=0)return 0;return -Math.expm1(-Math.pow(x/sc,sh))}
 
-function gampdf2(x,sh,sc){if(x<=0)return 0;return Math.exp((sh-1)*Math.log(x/sc)-x/sc-lgamma(sh))/sc}
+function gampdf2(x,sh,sc){if(x<=0)return 0;return gamPref(x/sc,sh)/x}
 function gamcdf2(x,sh,sc){return gamcdf(x/sc,sh)}
 function gaminv2(p,sh,sc){return gaminv(p,sh)*sc}
 
-function raylinv(p,s){return s*Math.sqrt(-2*Math.log(1-p))}
+function raylinv(p,s){return s*Math.sqrt(-2*Math.log1p(-p))}
 function raylpdf(x,s){if(x<=0)return 0;return(x/(s*s))*Math.exp(-(x*x)/(2*s*s))}
-function raylcdf(x,s){if(x<=0)return 0;return 1-Math.exp(-(x*x)/(2*s*s))}
+function raylcdf(x,s){if(x<=0)return 0;return -Math.expm1(-(x*x)/(2*s*s))}
 
 // ── Exponential ──────────────────────────────────────────────────
-function expinv(p,lam){return -Math.log(1-p)/lam}
+function expinv(p,lam){return -Math.log1p(-p)/lam}
 function exppdf(x,lam){if(x<0)return 0;return lam*Math.exp(-lam*x)}
-function expcdf(x,lam){if(x<0)return 0;return 1-Math.exp(-lam*x)}
+function expcdf(x,lam){if(x<0)return 0;return -Math.expm1(-lam*x)}
 
 // ── Uniform ───────────────────────────────────────────────────────
 function uninv(p,a,b){return a+p*(b-a)}
@@ -487,7 +550,7 @@ function unipdf(x,a,b){if(x<a||x>b)return 0;return 1/(b-a)}
 function unicdf(x,a,b){if(x<=a)return 0;if(x>=b)return 1;return(x-a)/(b-a)}
 
 // ── Gumbel (Type I Max) ───────────────────────────────────────────
-// CDF: exp(-exp(-(x-mu)/beta)),  mean=mu+0.5772*beta,  std=pi*beta/sqrt(6)
+// CDF: exp(-exp(-(x-mu)/beta)),  mean=mu+γ·beta (γ=0.5772…),  std=pi*beta/sqrt(6)
 function guminv(p,mu,beta){return mu-beta*Math.log(-Math.log(p))}
 function gumpdf(x,mu,beta){const z=(x-mu)/beta;return Math.exp(-z-Math.exp(-z))/beta}
 function gumcdf(x,mu,beta){return Math.exp(-Math.exp(-(x-mu)/beta))}
@@ -508,6 +571,16 @@ function llcdf(x,alpha,beta){if(x<=0)return 0;return 1/(1+Math.pow(alpha/x,beta)
 // Returns {p1,p2,ok,msg}. For Uniform the inputs ARE the native params (a,b).
 // For Normal the inputs ARE the native params (mu,sigma).
 const EULER_GAMMA = 0.5772156649015329;
+// Smallest CV accepted for the shape-driven families (Gamma, Weibull, Fréchet,
+// Log-logistic). Below 0.1 % the variable is practically deterministic and the
+// shape parameter becomes numerically extreme.
+const CV_MIN = 1e-3;
+function cvLowMsg(cv,name){return 'CV='+(cv*100).toPrecision(2)+'% is too low for '+name+' (min CV = 0.1%, i.e. std ≥ mean/1000) — use Normal or Lognormal for a nearly deterministic variable'}
+// Bisection for the shape whose CV equals cvT; cvOf must decrease with shape.
+function solveShape(cvOf,cvT,lo,hi){
+  for(let it=0;it<200;it++){const mid=(lo+hi)/2;if(cvOf(mid)>cvT)lo=mid;else hi=mid;if(hi-lo<=1e-14*hi)break}
+  return (lo+hi)/2;
+}
 function toNative(dist, m, s){
   switch(dist){
     case 'normal':   return {p1:m, p2:s, ok:true};
@@ -517,43 +590,48 @@ function toNative(dist, m, s){
       const s2=Math.log(1+cv2);
       return {p1:Math.log(m)-s2/2, p2:Math.sqrt(s2), ok:true};
     }
-    case 'gamma':    return {p1:(m/s)*(m/s), p2:s*s/m, ok:true};
+    case 'gamma':{
+      const cv=s/m;
+      if(cv<CV_MIN) return {ok:false,msg:cvLowMsg(cv,'Gamma')};
+      return {p1:1/(cv*cv), p2:s*s/m, ok:true};
+    }
     case 'rayleigh': return {p1:m/Math.sqrt(Math.PI/2), p2:NaN, ok:true};
     case 'exponential': return {p1:1/m, p2:NaN, ok:true};
     case 'gumbel':{
       const beta=s*Math.sqrt(6)/Math.PI;
       return {p1:m-EULER_GAMMA*beta, p2:beta, ok:true};
     }
+    // For the next three families CV depends on the shape parameter only and
+    // decreases monotonically with it, so the shape is found by bisection on
+    // CV(shape) and the scale then follows from the mean. CV² is formed with
+    // expm1(Δ lnΓ) so it stays accurate for large shapes (small CV).
     case 'weibull':{
       const cvT=s/m;
-      // Practical cap: CV ≤ 3 (k ≥ ~0.34). Beyond this the PDF is an extreme
+      // Practical cap: CV ≤ 3 (k ≥ ~0.41). Beyond this the PDF is an extreme
       // J-shape and samples are dominated by near-zero values + rare spikes.
       if(cvT>3) return {ok:false,msg:'CV='+cvT.toFixed(2)+' too high for a practical Weibull (max CV=3, i.e. std ≤ 3×mean)'};
-      const cvOf=k=>Math.sqrt(gammaFn(1+2/k)/(gammaFn(1+1/k)*gammaFn(1+1/k))-1);
-      let lo=0.1, hi=50;
-      for(let it=0;it<100;it++){const mid=(lo+hi)/2;if(cvOf(mid)>cvT)lo=mid;else hi=mid;if(hi-lo<1e-10)break;}
-      const k=(lo+hi)/2;
-      return {p1:k, p2:m/gammaFn(1+1/k), ok:true};
+      if(cvT<CV_MIN) return {ok:false,msg:cvLowMsg(cvT,'Weibull')};
+      const cvOf=k=>Math.sqrt(Math.expm1(lgamma(1+2/k)-2*lgamma(1+1/k)));
+      const k=solveShape(cvOf,cvT,0.1,5000);
+      return {p1:k, p2:m/Math.exp(lgamma(1+1/k)), ok:true};
     }
     case 'frechet':{
       const cvT=s/m;
-      // Practical cap: CV ≤ 2 (α ≥ ~2.4). As α→2⁺ the variance blows up and
+      // Practical cap: CV ≤ 2 (α ≥ ~2.15). As α→2⁺ the variance blows up and
       // sample statistics converge extremely slowly — unusable in practice.
       if(cvT>2) return {ok:false,msg:'CV='+cvT.toFixed(2)+' too high for a practical Fréchet (max CV=2, i.e. std ≤ 2×mean)'};
-      const cvOf=a=>a<=2?Infinity:Math.sqrt(gammaFn(1-2/a)/(gammaFn(1-1/a)*gammaFn(1-1/a))-1);
-      let lo=2.001, hi=100;
-      for(let it=0;it<200;it++){const mid=(lo+hi)/2;if(cvOf(mid)>cvT)lo=mid;else hi=mid;if(hi-lo<1e-10)break;}
-      const a=(lo+hi)/2;
-      return {p1:a, p2:m/gammaFn(1-1/a), ok:true};
+      if(cvT<CV_MIN) return {ok:false,msg:cvLowMsg(cvT,'Fréchet')};
+      const cvOf=a=>a<=2?Infinity:Math.sqrt(Math.expm1(lgamma(1-2/a)-2*lgamma(1-1/a)));
+      const a=solveShape(cvOf,cvT,2.001,5000);
+      return {p1:a, p2:m/Math.exp(lgamma(1-1/a)), ok:true};
     }
     case 'loglogistic':{
       const cvT=s/m;
-      // Practical cap: CV ≤ 2 (β ≥ ~2.3). As β→2⁺ variance diverges.
+      // Practical cap: CV ≤ 2 (β ≥ ~2.19). As β→2⁺ variance diverges.
       if(cvT>2) return {ok:false,msg:'CV='+cvT.toFixed(2)+' too high for a practical Log-logistic (max CV=2, i.e. std ≤ 2×mean)'};
+      if(cvT<CV_MIN) return {ok:false,msg:cvLowMsg(cvT,'Log-logistic')};
       const cvOf=beta=>{if(beta<=2)return Infinity;const b=Math.PI/beta;const mu=b/Math.sin(b);const m2=(2*b)/Math.sin(2*b);return Math.sqrt(m2-mu*mu)/mu;};
-      let lo=2.001, hi=100;
-      for(let it=0;it<200;it++){const mid=(lo+hi)/2;if(cvOf(mid)>cvT)lo=mid;else hi=mid;if(hi-lo<1e-10)break;}
-      const beta=(lo+hi)/2;
+      const beta=solveShape(cvOf,cvT,2.001,5000);
       const b=Math.PI/beta;
       return {p1:m*Math.sin(b)/b, p2:beta, ok:true};
     }
@@ -618,14 +696,14 @@ function cdfv(x,dist,p1,p2){
 function thStats(dist,p1,p2){
   if(dist==='normal')      return{mu:p1,sig:p2};
   if(dist==='lognormal')  {const mu=Math.exp(p1+p2*p2/2);return{mu,sig:Math.sqrt((Math.exp(p2*p2)-1)*Math.exp(2*p1+p2*p2))}}
-  if(dist==='weibull')    {const mu=p2*gammaFn(1+1/p1);return{mu,sig:p2*Math.sqrt(gammaFn(1+2/p1)-gammaFn(1+1/p1)*gammaFn(1+1/p1))}}
+  if(dist==='weibull')    {const mu=p2*Math.exp(lgamma(1+1/p1));return{mu,sig:mu*Math.sqrt(Math.expm1(lgamma(1+2/p1)-2*lgamma(1+1/p1)))}}
   if(dist==='gamma')       return{mu:p1*p2,sig:Math.sqrt(p1)*p2};
   if(dist==='rayleigh')    return{mu:p1*Math.sqrt(Math.PI/2),sig:p1*Math.sqrt((4-Math.PI)/2)};
   if(dist==='exponential') return{mu:1/p1,sig:1/p1};
   if(dist==='uniform')     return{mu:(p1+p2)/2,sig:(p2-p1)/Math.sqrt(12)};
-  if(dist==='gumbel')      return{mu:p1+0.5772*p2,sig:Math.PI*p2/Math.sqrt(6)};
-  if(dist==='frechet')    {const mu=p1>1?p2*gammaFn(1-1/p1):Infinity;
-                           const sig=p1>2?p2*Math.sqrt(gammaFn(1-2/p1)-gammaFn(1-1/p1)*gammaFn(1-1/p1)):Infinity;
+  if(dist==='gumbel')      return{mu:p1+EULER_GAMMA*p2,sig:Math.PI*p2/Math.sqrt(6)};
+  if(dist==='frechet')    {const mu=p1>1?p2*Math.exp(lgamma(1-1/p1)):Infinity;
+                           const sig=p1>2?mu*Math.sqrt(Math.expm1(lgamma(1-2/p1)-2*lgamma(1-1/p1))):Infinity;
                            return{mu,sig}}
   if(dist==='loglogistic'){const mu=p2>1?Math.PI*p1/(p2*Math.sin(Math.PI/p2)):Infinity;
                            const sig=p2>2?p1*Math.sqrt(Math.PI*(2/p2)/Math.sin(2*Math.PI/p2)-Math.PI*Math.PI/(p2*p2)/(Math.sin(Math.PI/p2)*Math.sin(Math.PI/p2))):Infinity;
@@ -673,150 +751,221 @@ function lhsdesign(n,d){
 // ═══════════════════════════════════════════════════════════════════
 //  GOF
 // ═══════════════════════════════════════════════════════════════════
+// Kolmogorov distribution, upper tail Q(z)=P(K>z). Two complementary series,
+// each used where it converges in a few terms — valid for every z, including
+// the very small z that perfectly stratified (LHS) samples produce.
+function ksQ(z){
+  if(!(z>0))return 1;
+  let q;
+  if(z<1.18){const y=Math.exp(-1.2337005501361697/(z*z));            // π²/8
+    q=1-2.5066282746310002/z*(y+Math.pow(y,9)+Math.pow(y,25)+Math.pow(y,49));}
+  else{const x=Math.exp(-2*z*z);q=2*(x-Math.pow(x,4)+Math.pow(x,9)-Math.pow(x,16));}
+  return Math.max(0,Math.min(1,q));
+}
+// Anderson–Darling: P(A² < z) when the distribution is FULLY SPECIFIED (case 0).
+// Marsaglia & Marsaglia (2004), "Evaluating the Anderson-Darling distribution",
+// J. Stat. Softw. 9(2): asymptotic law adinf(z) + finite-n correction errfix(n,·).
+function adCdf(n,z){
+  if(!(z>0))return 0;
+  let x;
+  if(z<2)x=Math.exp(-1.2337141/z)/Math.sqrt(z)*(2.00012+(.247105-(.0649821-(.0347962-(.011672-.00168691*z)*z)*z)*z)*z);
+  else x=Math.exp(-Math.exp(1.0776-(2.30695-(.43424-(.082433-(.008056-.0003146*z)*z)*z)*z)*z));
+  let e;
+  if(x>.8)e=(-130.2137+(745.2337-(1705.091-(1950.646-(1116.360-255.7844*x)*x)*x)*x)*x)/n;
+  else{
+    const c=.01265+.1757/n;
+    if(x<c){let t=x/c;t=Math.sqrt(t)*(1-t)*(49*t-102);e=t*(.0037/(n*n*n)+.00078/(n*n)+.00006/n);}
+    else{let t=(x-c)/(.8-c);t=-.00022633+(6.54034-(14.6538-(14.458-(8.259-1.91864*t)*t)*t)*t)*t;e=t*(.04213+.01365/n)/n;}
+  }
+  return Math.max(0,Math.min(1,x+e));
+}
+// Lilliefors p-value for normality with μ and σ estimated from the sample:
+// Dallal & Wilkinson (1986) formula (valid for p<0.1; n>100 rescaled to n=100)
+// plus the Stephens-type polynomial for p>0.1 — the algorithm of R nortest::lillie.test.
+function lillieP(D,n){
+  let Kd=D,nd=n;
+  if(n>100){Kd=D*Math.pow(n/100,.49);nd=100}
+  let p=Math.exp(-7.01256*Kd*Kd*(nd+2.78019)+2.99587*Kd*Math.sqrt(nd+2.78019)-.122119+.974598/Math.sqrt(nd)+1.67997/nd);
+  if(p>.1){
+    const k=(Math.sqrt(n)-.01+.85/Math.sqrt(n))*D,k2=k*k;
+    if(k<=.302)p=1;
+    else if(k<=.5)p=2.76773-19.828315*k+80.709644*k2-138.55152*k2*k+81.218052*k2*k2;
+    else if(k<=.9)p=-4.901232+40.662806*k-97.490286*k2+94.029866*k2*k-32.355711*k2*k2;
+    else if(k<=1.31)p=6.198765-19.558097*k+23.186922*k2-12.234627*k2*k+2.423045*k2*k2;
+    else p=0;
+  }
+  return Math.max(0,Math.min(1,p));
+}
+
+// Lilliefors-type p-value for the families fitted by llFit() other than normal /
+// lognormal. Under H0 the statistic z=(√n+0.12+0.11/√n)·D has a null distribution
+// that depends on the family and on n only (for Gamma also, mildly, on the shape).
+// It was simulated in this work (20 000 samples per case, n = 5 … 2000, checked
+// against an independent implementation) and is mapped onto the Kolmogorov law by
+//     p = Q_KS( K95·(z·f(n)/K95)^γ ),   f(n) = A + B/√n + C/n,   K95 = 1.3581,
+// which reproduces the simulated 5 % AND 50 % points (and the 1 % / 10 % points
+// to within ≈0.2 percentage points). Columns: [A, B, C, γ].
+const LL_CAL={
+  weibull:    [1.5194,0.0809,0.2741,1.3],
+  gamma:      [1.4959,0.0126,0.4535,1.25],       // × (1 − 0.0373/(α̂+0.1752)), see llP()
+  rayleigh:   [1.2422,0.0349,0.1062,1.12],
+  exponential:[1.248,-0.037,0.2333,1.12],
+  uniform:    [1.0009,-0.0417,0.3257,1.0],
+  gumbel:     [1.4031,0.2463,0.3316,1.24],
+  frechet:    [1.4031,0.2463,0.3316,1.24],      // fitted as Gumbel on ln x → same curve
+  loglogistic:[1.3738,0.0959,0.3838,1.23]};
+function llP(D,n,dist,shape){
+  const c=LL_CAL[dist],sq=Math.sqrt(n),K95=1.3581015157;
+  let f=c[0]+c[1]/sq+c[2]/n;
+  if(dist==='gamma')f*=1-0.0373/(shape+0.1752);            // small shapes need a slightly smaller factor
+  return ksQ(K95*Math.pow((sq+.12+.11/sq)*D*f/K95,c[3]));
+}
+
+// Parameter estimates used by the Lilliefors-type test (sample sorted ascending).
+// The Monte-Carlo calibration in LL_CAL below belongs to exactly these estimators.
+function llFit(sorted,dist){
+  const n=sorted.length;
+  const xm=sorted.reduce((a,b)=>a+b,0)/n;
+  const xs=Math.sqrt(sorted.reduce((a,b)=>a+(b-xm)*(b-xm),0)/n);
+
+  let ep1, ep2;
+  switch(dist){
+    case 'normal':
+      ep1=xm; ep2=xs*Math.sqrt(n/(n-1)); break;          // unbiased s, as in Lilliefors' tables
+    case 'lognormal': {
+      const lx=sorted.map(v=>Math.log(Math.max(v,1e-300)));
+      ep1=lx.reduce((a,b)=>a+b,0)/n;
+      ep2=Math.sqrt(lx.reduce((a,b)=>a+(b-ep1)*(b-ep1),0)/(n-1));
+      break;
+    }
+    case 'weibull': {
+      // Maximum likelihood (Newton on the profile equation for k). Data are
+      // divided by their maximum first: k is scale-invariant and this keeps
+      // x^k from overflowing when k is large (small CV).
+      const xmax=sorted[n-1];
+      const y=sorted.map(v=>Math.max(v,1e-300)/xmax),ly=y.map(Math.log);
+      const s3=ly.reduce((a,b)=>a+b,0);
+      const sl=Math.sqrt(ly.reduce((a,b)=>a+(b-s3/n)*(b-s3/n),0)/n);
+      let k=sl>0?Math.PI/(Math.sqrt(6)*sl):1.2;           // Menon's estimate as starting value
+      for(let it=0;it<100;it++){
+        const yk=y.map(v=>Math.pow(v,k));
+        const s1=yk.reduce((a,b)=>a+b,0);
+        const s2=yk.reduce((a,b,i)=>a+b*ly[i],0);
+        const s4=yk.reduce((a,b,i)=>a+b*ly[i]*ly[i],0);
+        const f=n/k+s3-n*s2/s1;
+        const df=-n/(k*k)-n*(s1*s4-s2*s2)/(s1*s1);
+        const dk=f/df; k-=dk; if(!(k>0))k=0.1; if(Math.abs(dk)<1e-10*k)break;
+      }
+      ep1=k;
+      ep2=xmax*Math.pow(y.reduce((a,v)=>a+Math.pow(v,k),0)/n,1/k);
+      break;
+    }
+    case 'gamma': {
+      // Maximum likelihood: ln α − ψ(α) = ln(mean) − mean(ln x), scale = mean/α.
+      // (ML rather than moments: with moment estimates the null distribution of
+      // D depends strongly on the shape, which no single calibration can follow.)
+      const ml=sorted.reduce((a,b)=>a+Math.log(Math.max(b,1e-300)),0)/n;
+      const s=Math.log(xm)-ml;                                     // ≥ 0 by Jensen's inequality
+      let a=s>1e-12?(3-s+Math.sqrt((s-3)*(s-3)+24*s))/(12*s):1e9;  // Thom/Minka starting value
+      for(let it=0;it<50&&s>1e-12;it++){
+        let an=a-(Math.log(a)-digamma(a)-s)/(1/a-trigamma(a));
+        if(!(an>0))an=a/2;
+        if(Math.abs(an-a)<=1e-12*a){a=an;break}
+        a=an;
+      }
+      ep1=a; ep2=xm/a; break;
+    }
+    case 'rayleigh':
+      ep1=Math.sqrt(sorted.reduce((a,b)=>a+b*b,0)/(2*n));
+      ep2=NaN; break;
+    case 'exponential':
+      // MLE: lambda = 1/mean
+      ep1=1/xm; ep2=NaN; break;
+    case 'uniform':
+      // a=min, b=max
+      ep1=sorted[0]; ep2=sorted[n-1]; break;
+    case 'gumbel': {
+      // MOM: beta=s*sqrt(6)/pi, mu=mean-γ*beta
+      const sg=Math.sqrt(sorted.reduce((a,b)=>a+(b-xm)*(b-xm),0)/(n-1));
+      ep2=sg*Math.sqrt(6)/Math.PI; ep1=xm-EULER_GAMMA*ep2; break;
+    }
+    case 'frechet': {
+      // ln X is Gumbel with location ln s and scale 1/α, so Fréchet is fitted
+      // as Gumbel on ln x (method of moments) — the same estimator, hence the
+      // same calibration, as the Gumbel family; cf. lognormal ↔ normal.
+      const lx2=sorted.map(v=>Math.log(Math.max(v,1e-300)));
+      const mlx=lx2.reduce((a,b)=>a+b,0)/n;
+      const slx=Math.sqrt(lx2.reduce((a,b)=>a+(b-mlx)*(b-mlx),0)/(n-1));
+      ep1=Math.PI/(Math.sqrt(6)*slx);
+      ep2=Math.exp(mlx-EULER_GAMMA/ep1); break;
+    }
+    case 'loglogistic': {
+      // MOM on log-moments (ln X is logistic): beta=pi/(sqrt(3)*s_ln), alpha=exp(mean ln x)
+      const lx3=sorted.map(v=>Math.log(Math.max(v,1e-300)));
+      const mlx3=lx3.reduce((a,b)=>a+b,0)/n;
+      const slx3=Math.sqrt(lx3.reduce((a,b)=>a+(b-mlx3)*(b-mlx3),0)/n);
+      ep2=Math.PI/(Math.sqrt(3)*slx3); ep1=Math.exp(mlx3); break;
+    }
+  }
+  return [ep1,ep2];
+}
+
+// Goodness-of-fit tests of one sample against its target distribution.
+//   KS, AD, χ² : target parameters are KNOWN (the ones the user specified).
+//   Lilliefors : parameters are RE-ESTIMATED from the sample.
+// All four are tests for random samples. A Latin-hypercube sample is stratified
+// on purpose, so it fits its target far better than a random sample would and
+// p-values close to 1 are the expected outcome — the tests act as a sanity check.
 function runGOF(xi,dist,p1,p2){
   const n=xi.length,sorted=[...xi].sort((a,b)=>a-b),al=.05,res=[];
+  const F0=sorted.map(v=>cdfv(v,dist,p1,p2));       // CDF under the specified distribution
+  const kolmD=F=>{let D=0;for(let i=0;i<n;i++)D=Math.max(D,(i+1)/n-F[i],F[i]-i/n);return D};
+  const sq=Math.sqrt(n),stephens=sq+.12+.11/sq;     // Stephens' finite-n factor for √n·D
+
   if(document.getElementById('gof-ks').checked){
-    let D=0;
-    for(let i=0;i<n;i++){const F=cdfv(sorted[i],dist,p1,p2);D=Math.max(D,Math.abs((i+1)/n-F),Math.abs(i/n-F))}
-    const sq=Math.sqrt(n),z=(sq+.12+.11/sq)*D;
-    let p=0;for(let j=1;j<=100;j++)p+=2*Math.pow(-1,j-1)*Math.exp(-2*j*j*z*z);
-    p=Math.max(0,Math.min(1,p));res.push({name:'KS',p,pass:p>=al});
+    const p=ksQ(stephens*kolmD(F0));
+    res.push({name:'KS',p,pass:p>=al});
   }
   if(document.getElementById('gof-ad').checked){
-    let A2=0;
-    for(let i=0;i<n;i++){const F=Math.max(1e-12,Math.min(1-1e-12,cdfv(sorted[i],dist,p1,p2)));A2+=(2*(i+1)-1)/n*(Math.log(F)+Math.log(1-cdfv(sorted[n-1-i],dist,p1,p2)))}
-    A2=-n-A2;
-    let p=A2<=.2?1-Math.exp(-13.436+101.14*A2-223.73*A2**2):A2<=.34?1-Math.exp(-8.318+42.796*A2-59.938*A2**2):A2<=.6?Math.exp(.9177-4.279*A2-1.38*A2**2):Math.exp(1.2937-5.709*A2+.0186*A2**2);
-    p=Math.max(0,Math.min(1,p));res.push({name:'AD',p,pass:p>=al});
+    const cl=v=>Math.max(1e-300,Math.min(1-1e-16,v));
+    let s=0;
+    for(let i=0;i<n;i++)s+=(2*i+1)*(Math.log(cl(F0[i]))+Math.log(1-cl(F0[n-1-i])));
+    const A2=-n-s/n;
+    const p=1-adCdf(n,A2);
+    res.push({name:'AD',p,pass:p>=al});
   }
   if(document.getElementById('gof-chi').checked){
-    const nb=Math.max(5,Math.floor(n/5));
-    const edges=[0];for(let i=1;i<nb;i++)edges.push(i/nb);edges.push(1);
-    const xe=edges.map(p=>p===0?-Infinity:p===1?Infinity:icdf(p,dist,p1,p2));
-    const obs=Array(nb).fill(0);
-    for(const v of xi)for(let b=0;b<nb;b++)if(v>xe[b]&&v<=xe[b+1]){obs[b]++;break}
-    let o=[...obs],e=Array(nb).fill(n/nb),ch=true;
-    while(ch){ch=false;for(let k=o.length-1;k>=0;k--)if(e[k]<5&&o.length>2){const m=k===0?1:k-1;o[m]+=o[k];e[m]+=e[k];o.splice(k,1);e.splice(k,1);ch=true;break}}
-    const chi2=o.reduce((s,oi,i)=>s+(oi-e[i])**2/e[i],0),df=Math.max(1,o.length-1);
-    const p=1-gamcdf(chi2/2,df/2);res.push({name:'χ²',p,pass:p>=al});
+    // Equiprobable classes with expected count n/nb ≥ 5; df = nb-1 (no parameter estimated).
+    if(n<10)res.push({name:'χ²',na:'needs n ≥ 10'});
+    else{
+      const nb=Math.floor(n/5),e=n/nb,obs=Array(nb).fill(0);
+      for(let i=0;i<n;i++)obs[Math.min(nb-1,Math.max(0,Math.floor(F0[i]*nb)))]++;
+      let chi2=0;for(let b=0;b<nb;b++)chi2+=(obs[b]-e)*(obs[b]-e)/e;
+      const p=gamsf(chi2/2,(nb-1)/2);
+      res.push({name:'χ²',p,pass:p>=al});
+    }
   }
   // ── Lilliefors ──────────────────────────────────────────────────
-  // The Lilliefors test is a KS test where parameters are ESTIMATED from
-  // the sample rather than specified a priori. This requires different
-  // (smaller) critical values than the standard KS test.
-  //
-  // Implementation follows:
-  //   Normal    : Dallal & Wilkinson (1986) p-value formula
-  //   Lognormal : log-transform then apply normal Lilliefors
-  //   Weibull   : MLE parameters + Monte-Carlo-calibrated f(n) scaling
-  //   Gamma     : MOM parameters + Monte-Carlo-calibrated f(n) scaling
-  //   Rayleigh  : MLE parameter  + Monte-Carlo-calibrated f(n) scaling
-  //
-  // Non-normal families: p-value from the KS distribution evaluated at
-  // D·f(n), with f(n)=A+B/√n calibrated by Monte Carlo in this work
-  // (see constants at Step 3). Normal & lognormal use Dallal–Wilkinson.
+  // KS statistic with parameters ESTIMATED from the sample, which needs its own
+  // (smaller) critical values.
+  //   Normal / Lognormal : lillieP() — Dallal & Wilkinson (1986), on x or ln x.
+  //   Other families     : llP() — null distribution simulated in this work for
+  //                        exactly the estimators in llFit().
   if(document.getElementById('gof-ll').checked){
-    const xm=sorted.reduce((a,b)=>a+b,0)/n;
-    const xs=Math.sqrt(sorted.reduce((a,b)=>a+(b-xm)*(b-xm),0)/n);
-
-    // Step 1: estimate parameters from sample
-    let ep1, ep2;
-    switch(dist){
-      case 'normal':
-        ep1=xm; ep2=xs; break;
-      case 'lognormal': {
-        const lx=sorted.map(v=>Math.log(Math.max(v,1e-300)));
-        ep1=lx.reduce((a,b)=>a+b,0)/n;
-        ep2=Math.sqrt(lx.reduce((a,b)=>a+(b-ep1)*(b-ep1),0)/n);
-        break;
-      }
-      case 'weibull': {
-        const lx=sorted.map(v=>Math.log(Math.max(v,1e-300)));
-        let k=1.2;
-        for(let it=0;it<60;it++){
-          const xk=sorted.map(v=>Math.pow(v,k));
-          const s1=xk.reduce((a,b)=>a+b,0);
-          const s2=xk.reduce((a,b,i)=>a+b*lx[i],0);
-          const s3=lx.reduce((a,b)=>a+b,0);
-          const xk2=xk.map((v,i)=>v*lx[i]*lx[i]);
-          const f=n/k+s3-n*s2/s1;
-          const df=-n/(k*k)-n*(s1*xk2.reduce((a,b)=>a+b,0)-s2*s2)/(s1*s1);
-          const dk=f/df; k-=dk; if(k<=0)k=0.1; if(Math.abs(dk)<1e-10)break;
-        }
-        ep1=k;
-        ep2=Math.pow(sorted.map(v=>Math.pow(v,k)).reduce((a,b)=>a+b,0)/n,1/k);
-        break;
-      }
-      case 'gamma': {
-        const v2=sorted.reduce((a,b)=>a+(b-xm)*(b-xm),0)/n;
-        ep1=Math.max(0.01,(xm*xm)/v2); ep2=v2/Math.max(1e-10,xm); break;
-      }
-      case 'rayleigh':
-        ep1=Math.sqrt(sorted.reduce((a,b)=>a+b*b,0)/(2*n));
-        ep2=NaN; break;
-      case 'exponential':
-        // MLE: lambda = 1/mean
-        ep1=1/xm; ep2=NaN; break;
-      case 'uniform':
-        // MOM: a=min, b=max
-        ep1=sorted[0]; ep2=sorted[n-1]; break;
-      case 'gumbel': {
-        // MOM: beta=s*sqrt(6)/pi, mu=mean-0.5772*beta
-        const sg=Math.sqrt(sorted.reduce((a,b)=>a+(b-xm)*(b-xm),0)/(n-1));
-        ep2=sg*Math.sqrt(6)/Math.PI; ep1=xm-0.5772*ep2; break;
-      }
-      case 'frechet': {
-        // MOM on log-moments; scale = sample median
-        const lx2=sorted.map(v=>Math.log(Math.max(v,1e-300)));
-        const mlx=lx2.reduce((a,b)=>a+b,0)/n;
-        const slx=Math.sqrt(lx2.reduce((a,b)=>a+(b-mlx)*(b-mlx),0)/n);
-        // shape: pi/(sqrt(6)*slx), scale: median
-        ep1=Math.PI/(Math.sqrt(6)*slx);
-        // Fréchet median = s·(ln2)^(−1/α)  ⇒  de-biased scale s = median·(ln2)^(1/α)
-        ep2=sorted[Math.floor(n/2)]*Math.pow(Math.LN2,1/ep1); break;
-      }
-      case 'loglogistic': {
-        // MOM on log-moments: beta=pi/(sqrt(3)*s_log), alpha=exp(mu_log)
-        const lx3=sorted.map(v=>Math.log(Math.max(v,1e-300)));
-        const mlx3=lx3.reduce((a,b)=>a+b,0)/n;
-        const slx3=Math.sqrt(lx3.reduce((a,b)=>a+(b-mlx3)*(b-mlx3),0)/n);
-        ep2=Math.PI/(Math.sqrt(3)*slx3); ep1=Math.exp(mlx3); break;
-      }
-    }
+    if(n<5)res.push({name:'LL',na:'needs n ≥ 5'});
+    else{
+    // Step 1: estimate parameters from the sample
+    const [ep1,ep2]=llFit(sorted,dist);
 
     // Step 2: KS statistic D with estimated parameters
-    let Dll=0;
-    for(let i=0;i<n;i++){
-      const F=cdfv(sorted[i],dist,ep1,ep2);
-      Dll=Math.max(Dll,Math.abs((i+1)/n-F),Math.abs(i/n-F));
-    }
+    const Dll=kolmD(sorted.map(v=>cdfv(v,dist,ep1,ep2)));
+
 
     // Step 3: p-value
-    // f(n)=A+B/√n maps the estimated-parameter statistic onto the KS
-    // distribution: p = Q_KS((√n+0.12+0.11/√n)·D·f(n)).
-    // Constants CALIBRATED BY MONTE CARLO (this work): 2000 trials per
-    // distribution per n∈{20,30,50}, mixed representative shapes;
-    // empirical Type-I error verified ≈ 5%. Normal & lognormal instead
-    // use the Dallal–Wilkinson (1986) formula (more accurate).
-    const LL_F={weibull:[1.4915,0.2995],gamma:[1.4739,0.2253],rayleigh:[1.3192,-0.3795],exponential:[1.2482,-0.0173],uniform:[1.0165,-0.0705],gumbel:[1.3746,0.4897],frechet:[1.1701,-0.1304],loglogistic:[1.3214,0.4375]};
-    const fc=LL_F[dist];
-    const f=fc ? fc[0]+fc[1]/Math.sqrt(n) : 1.4;
-
-    let p_ll;
-    if(dist==='normal'||dist==='lognormal'){
-      // Dallal & Wilkinson (1986) — most accurate for normal family
-      const a=Dll*Dll*(n+2.78019), b=Dll*Math.sqrt(n+2.78019);
-      p_ll=Math.exp(-7.01256*a+2.99587*b-0.122119+0.974598/Math.sqrt(n)+1.67997/n);
-    } else {
-      // Map D to KS scale via correction factor, then use KS p-value formula
-      const Deff=Dll*f;
-      const sq=Math.sqrt(n), z=(sq+0.12+0.11/sq)*Deff;
-      let pk=0; for(let j=1;j<=100;j++) pk+=2*Math.pow(-1,j-1)*Math.exp(-2*j*j*z*z);
-      p_ll=pk;
-    }
-    p_ll=Math.max(0,Math.min(1,p_ll));
+    const p_ll=(dist==='normal'||dist==='lognormal')?lillieP(Dll,n):llP(Dll,n,dist,ep1);
     res.push({name:'LL',p:p_ll,pass:p_ll>=al,
       note:dist==='normal'?'(est. μ,σ)':dist==='lognormal'?'(est. μ_ln,σ_ln)':'(est. params)'});
+    }
   }
 
   return res;
@@ -833,12 +982,24 @@ function runLHS(n,vs,Rtgt,maxIter,T0,Tmin,alpha){
     const X=U.map(row=>[icdf(row[0],vs[0].dist,vs[0].p1,vs[0].p2)]);
     return{X, Rfin:[[1]], cost:0};
   }
+  // ── Step 1: normal scores carrying the target correlation (Cholesky) ──
   const Z=U.map(row=>row.map(u=>norminv(u)));
   const L=chol(Rtgt);
-  let Zc=Z.map(row=>Array.from({length:d},(_,j)=>{let s=0;for(let k=0;k<=j;k++)s+=L[j][k]*row[k];return s}));
-  const{mu:zm,sig:zs}=colMeanStd(Zc);
-  Zc=Zc.map(row=>row.map((v,j)=>(v-zm[j])/zs[j]));
-  let X=Zc.map(row=>row.map((z,j)=>icdf(normcdf(z),vs[j].dist,vs[j].p1,vs[j].p2)));
+  const Zc=Z.map(row=>Array.from({length:d},(_,j)=>{let s=0;for(let k=0;k<=j;k++)s+=L[j][k]*row[k];return s}));
+  // ── Step 2: restricted pairing (Iman & Conover, 1982) ─────────────────
+  // Mixing columns (Z·Lᵀ) gives the right dependence but destroys the
+  // stratification of every column it touches. So the scores are used ONLY
+  // for their ranks: each column keeps its own n stratified LHS values and
+  // these are re-ordered to follow the rank order of the correlated scores.
+  // Every marginal therefore stays an exact Latin-hypercube sample (one value
+  // per stratum), and the SA swaps below — which only permute values within a
+  // column — keep it that way.
+  const X=Array.from({length:n},()=>Array(d).fill(0));
+  for(let j=0;j<d;j++){
+    const us=U.map(r=>r[j]).sort((a,b)=>a-b);                                   // stratified values, ascending
+    const ord=Array.from({length:n},(_,i)=>i).sort((a,b)=>Zc[a][j]-Zc[b][j]);   // rows in score-rank order
+    for(let r=0;r<n;r++)X[ord[r]][j]=icdf(us[r],vs[j].dist,vs[j].p1,vs[j].p2);
+  }
 
   let{mu,sig}=colMeanStd(X);
   let cov=covMat(X,mu);
@@ -874,8 +1035,8 @@ function hmColor(v,lo,hi){
   const b=Math.round(255*Math.max(0,Math.min(1,t<.5?.9-1.6*t:0)));
   return`rgb(${r},${g},${b})`;
 }
-function drawHM(id,M,lo,hi){
-  const d=M.length,names=vars.map(v=>v.name);
+function drawHM(id,M,lo,hi,names){
+  const d=M.length;names=names.map(escHtml);
   let h=`<tr><th></th>${names.map(n=>`<th>${n}</th>`).join('')}</tr>`;
   for(let i=0;i<d;i++){
     h+=`<tr><th>${names[i]}</th>`;
@@ -894,18 +1055,19 @@ function drawMarginals(X,nvars){
   chartList.forEach(c=>c.destroy());chartList=[];
   const mg=document.getElementById('mgrid');
   mg.innerHTML='';
-  const d=dvars.length,nc=Math.ceil(Math.sqrt(d));
-  mg.style.gridTemplateColumns=`repeat(${nc},1fr)`;
+  _margMeta=[];
   dvars.forEach((v,i)=>{
     const col=X.map(r=>r[i]);
-    const mn=Math.min(...col),mx=Math.max(...col),rng=mx-mn;
+    const [mn,mx]=minMax(col),rng=(mx-mn)||Math.abs(mn)||1;
     const xlo=mn-.12*rng,xhi=mx+.12*rng;
-    const xp=Array.from({length:200},(_,k)=>xlo+k*(xhi-xlo)/199);
+    const xp=Array.from({length:401},(_,k)=>xlo+k*(xhi-xlo)/400);
     const yp=xp.map(x=>pdfv(x,v.dist,v.p1,v.p2));
-    const nb=12,bw=(xhi-xlo)/nb;
+    const nb=Math.max(12,Math.min(40,Math.round(2*Math.cbrt(col.length)))),bw=(xhi-xlo)/nb;   // Rice rule, 12…40 bins
     const bins=Array(nb).fill(0);
     col.forEach(x=>{const b=Math.min(nb-1,Math.max(0,Math.floor((x-xlo)/bw)));bins[b]++});
     const bnd=bins.map(b=>b/(col.length*bw));
+    // J-shaped densities are unbounded at the origin: cap the axis so the histogram stays readable
+    const hMax=Math.max(...bnd),pMax=Math.max(...yp.filter(Number.isFinite)),yCap=pMax>3*hMax?3*hMax:undefined;
     const bc=Array.from({length:nb},(_,k)=>xlo+(k+.5)*bw);
     const sm=col.reduce((a,b)=>a+b,0)/col.length;
     const ss=Math.sqrt(col.reduce((a,b)=>a+(b-sm)**2,0)/(col.length-1));
@@ -914,34 +1076,49 @@ function drawMarginals(X,nvars){
     const tc=ts.sig/Math.abs(ts.mu)*100;
     const gof=runGOF(col,v.dist,v.p1,v.p2);
     const note=v.dist==='lognormal'?` <span class="lbl">[μ_ln=${v.p1.toFixed(3)} σ_ln=${v.p2.toFixed(3)}]</span>`:'';
-    let infoH=`<div class="sinfo"><span class="lbl">Sample :  </span>mean=${sm.toPrecision(4)}  std=${ss.toPrecision(4)}  COV=${sc.toFixed(1)}%<br>`+
-      `<span class="lbl">Theoret.: </span>mean=${ts.mu.toPrecision(4)}  std=${ts.sig.toPrecision(4)}  COV=${tc.toFixed(1)}%${note}`;
-    gof.forEach(g=>{const note=g.note?' '+g.note:'';infoH+=`<br><span class="${g.pass?'pass':'fail'}">${g.name}: p=${g.p.toFixed(3)}  ${g.pass?'PASS':'FAIL'} (α=0.05)${note}</span>`});
+    const g5=x=>fmtNum(x,5);
+    let infoH=`<div class="sinfo"><span class="lbl">Sample :  </span>mean=${g5(sm)}  std=${g5(ss)}  COV=${sc.toFixed(1)}%<br>`+
+      `<span class="lbl">Theoret.: </span>mean=${g5(ts.mu)}  std=${g5(ts.sig)}  COV=${tc.toFixed(1)}%${note}`;
+    const meta={title:`${v.name} — ${v.dist}`,lines:[
+      {c:'#8a97b0',t:`Sample : mean=${g5(sm)}  std=${g5(ss)}  COV=${sc.toFixed(1)}%`},
+      {c:'#8a97b0',t:`Theoret.: mean=${g5(ts.mu)}  std=${g5(ts.sig)}  COV=${tc.toFixed(1)}%`+(v.dist==='lognormal'?`  [μ_ln=${v.p1.toFixed(3)} σ_ln=${v.p2.toFixed(3)}]`:'')}]};
+    gof.forEach(g=>{
+      if(g.na){infoH+=`<br><span class="lbl">${g.name}: n/a (${g.na})</span>`;meta.lines.push({c:'#5a6680',t:`${g.name}: n/a (${g.na})`});return}
+      const note=g.note?' '+g.note:'',txt=`${g.name}: p=${g.p.toFixed(3)}  ${g.pass?'PASS':'FAIL'} (α=0.05)${note}`;
+      infoH+=`<br><span class="${g.pass?'pass':'fail'}">${txt}</span>`;
+      meta.lines.push({c:g.pass?'#34c77b':'#f55f4e',t:txt})});
+    _margMeta.push(meta);
     infoH+='</div>';
     const card=document.createElement('div');
     card.className='card';
-    card.innerHTML=`<h3>${v.name} — ${v.dist}</h3><canvas id="mc${i}" height="160"></canvas>${infoH}`;
+    card.innerHTML=`<h3>${escHtml(v.name)} — ${v.dist}</h3><canvas id="mc${i}" height="160"></canvas>${infoH}`;
     mg.appendChild(card);
+    if(typeof Chart!=='function'){      // chart library not loaded (e.g. offline): keep statistics, skip the plot
+      const cv=document.getElementById(`mc${i}`),msg=document.createElement('div');
+      msg.className='hint';msg.textContent='Plot unavailable — the Chart.js library could not be loaded (no internet connection?). Statistics, tests, table and CSV are unaffected.';
+      cv.replaceWith(msg);return;
+    }
     const ctx=document.getElementById(`mc${i}`).getContext('2d');
     const ch=new Chart(ctx,{data:{datasets:[
       {type:'bar',label:'LHS',data:bc.map((x,k)=>({x,y:bnd[k]})),
-       backgroundColor:'rgba(104,170,255,.5)',borderColor:'rgba(40,100,210,.8)',borderWidth:1,barThickness:Math.max(4,Math.floor(380/nb))},
+       backgroundColor:'rgba(104,170,255,.5)',borderColor:'rgba(40,100,210,.8)',borderWidth:1,barPercentage:1,categoryPercentage:1},
       {type:'line',label:'Theoretical PDF',data:xp.map((x,k)=>({x,y:yp[k]})),
-       borderColor:'#e84040',borderWidth:2,pointRadius:0,fill:false,tension:.4}
+       borderColor:'#e84040',borderWidth:2,pointRadius:0,fill:false,tension:0}
     ]},options:{animation:false,plugins:{legend:{labels:{color:'#8a97b0',font:{size:10}}}},
-      scales:{x:{type:'linear',min:xlo,max:xhi,ticks:{color:'#8a97b0',font:{size:9}},grid:{color:'rgba(255,255,255,.05)'}},
-              y:{ticks:{color:'#8a97b0',font:{size:9}},grid:{color:'rgba(255,255,255,.05)'},title:{display:true,text:'Density',color:'#8a97b0',font:{size:9}}}}}});
+      scales:{x:{type:'linear',min:xlo,max:xhi,ticks:{color:'#8a97b0',font:{size:9},callback:v=>fmtNum(+v,4)},grid:{color:'rgba(255,255,255,.05)'}},
+              y:{max:yCap,ticks:{color:'#8a97b0',font:{size:9},callback:v=>fmtNum(+v,3)},grid:{color:'rgba(255,255,255,.05)'},title:{display:true,text:'Density',color:'#8a97b0',font:{size:9}}}}}});
     chartList.push(ch);
   });
 }
 
 let _scatterData=null;   // cached so we can redraw when the tab becomes visible
+let _margMeta=[];        // title + statistics lines of each marginal chart (used by the PNG export)
 
-function drawScatter(X,Rf){
-  _scatterData={X,Rf};   // cache for re-render on tab open
+function drawScatter(X,Rf,names){
+  _scatterData={X,Rf,names};   // cache for re-render on tab open
   const sw=document.getElementById('scatter-wrap');
   sw.innerHTML='<h3>Pairwise Scatter Matrix</h3>';
-  const d=vars.length;
+  const d=names.length;
   // Container may be display:none when called from run() -> clientWidth==0.
   // Fall back to the results column width, then to a sane default.
   let avail=sw.clientWidth;
@@ -959,12 +1136,12 @@ function drawScatter(X,Rf){
   for(let i=0;i<d;i++)for(let j=0;j<d;j++){
     const cell=document.createElement('div');
     cell.style.cssText=`width:${sz}px;height:${sz}px;background:var(--panel2);border:1px solid var(--border);border-radius:3px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;color:var(--txt3);overflow:hidden`;
-    if(i===j){cell.innerHTML=`<span style="color:var(--accent);font-weight:700">${vars[i].name}</span>`}
+    if(i===j){cell.innerHTML=`<span style="color:var(--accent);font-weight:700">${escHtml(names[i])}</span>`}
     else{
       const cv=document.createElement('canvas');cv.width=sz;cv.height=sz;cell.appendChild(cv);
       const ctx=cv.getContext('2d');
       const xd=X.map(r=>r[j]),yd=X.map(r=>r[i]);
-      const xmn=Math.min(...xd),xmx=Math.max(...xd),ymn=Math.min(...yd),ymx=Math.max(...yd);
+      const [xmn,xmx]=minMax(xd),[ymn,ymx]=minMax(yd);
       const p=4,tx=v=>p+(v-xmn)/(xmx-xmn||1)*(sz-2*p),ty=v=>sz-p-(v-ymn)/(ymx-ymn||1)*(sz-2*p);
       ctx.fillStyle='#252d40';ctx.fillRect(0,0,sz,sz);
       ctx.fillStyle='rgba(66,133,244,.75)';
@@ -979,9 +1156,9 @@ function drawScatter(X,Rf){
 }
 
 function drawSampleTable(X,nvars){
-  const names=(nvars||vars).map(v=>v.name);
+  const names=(nvars||vars).map(v=>escHtml(v.name));
   let h=`<tr><th>#</th>${names.map(n=>`<th>${n}</th>`).join('')}</tr>`;
-  X.forEach((row,i)=>{h+=`<tr><td>S${i+1}</td>${row.map(v=>`<td>${v.toFixed(4)}</td>`).join('')}</tr>`});
+  X.forEach((row,i)=>{h+=`<tr><td>S${i+1}</td>${row.map(v=>`<td>${Number.isFinite(v)?v.toPrecision(6):v}</td>`).join('')}</tr>`});
   document.getElementById('stbl').innerHTML=h;
 }
 
@@ -994,21 +1171,24 @@ function drawConvLog(X, nvars){
     const sm=col.reduce((a,b)=>a+b,0)/col.length;
     const ss=Math.sqrt(col.reduce((a,b)=>a+(b-sm)*(b-sm),0)/(col.length-1));
     let inputStr, nativeStr;
+    const f=v=>fmtNum(v,6);
     if(e.isUniform){
       inputStr=`min=${e.inMean}, max=${e.inStd}`;
-      nativeStr=`${e.l1}=${e.v1.toFixed(4)}, ${e.l2}=${e.v2.toFixed(4)}`;
+      nativeStr=`${e.l1}=${f(e.v1)}, ${e.l2}=${f(e.v2)}`;
     } else if(e.inStd===null){
       inputStr=`mean=${e.inMean}  (std auto)`;
-      nativeStr=`${e.l1}=${e.v1.toFixed(4)}`;
+      nativeStr=`${e.l1}=${f(e.v1)}`;
     } else {
       inputStr=`mean=${e.inMean}, std=${e.inStd}`;
-      nativeStr=e.l2?`${e.l1}=${e.v1.toFixed(4)}, ${e.l2}=${e.v2.toFixed(4)}`:`${e.l1}=${e.v1.toFixed(4)}`;
+      nativeStr=e.l2?`${e.l1}=${f(e.v1)}, ${e.l2}=${f(e.v2)}`:`${e.l1}=${f(e.v1)}`;
     }
     h+=`<div class="convrow">
-      <div class="convname">${e.name} <span class="convdist">${e.dist}</span></div>
+      <div class="convname">${escHtml(e.name)} <span class="convdist">${e.dist}</span></div>
       <div class="convline"><span class="lbl">Input:</span> ${inputStr}</div>
       <div class="convline"><span class="lbl">Native:</span> ${nativeStr}</div>
-      <div class="convline"><span class="lbl">Achieved:</span> mean=${sm.toFixed(4)}, std=${ss.toFixed(4)}</div>
+      <div class="convline"><span class="lbl">Theory:</span> mean=${f(e.thMu)}, std=${f(e.thSig)}</div>
+      <div class="convline"><span class="lbl">Sample:</span> mean=${f(sm)}, std=${f(ss)}</div>
+      ${e.note?`<div class="convline" style="color:var(--warn)"><span class="lbl">Note:</span> ${escHtml(e.note)}</div>`:''}
     </div>`;
   });
   document.getElementById('convlog').innerHTML=h;
@@ -1021,34 +1201,38 @@ function renderVars(){
   const tb=document.getElementById('vtbody');
   tb.innerHTML='';
   vars.forEach((v,i)=>{
+    const info=DINFO[v.dist];
     const tr=document.createElement('tr');
     tr.innerHTML=`
       <td style="color:var(--txt3);text-align:center">${i+1}</td>
-      <td><input type="text"   value="${v.name}" style="width:52px" oninput="vars[${i}].name=this.value;renderCorr()"></td>
+      <td><input type="text"   value="${escHtml(v.name)}" style="width:52px" oninput="vars[${i}].name=this.value;renderCorr()"></td>
       <td>
-        <select style="width:96px" onchange="vars[${i}].dist=this.value;updateHint(${i});renderVars()">
+        <select style="width:96px" onchange="vars[${i}].dist=this.value;activeRow=${i};renderVars()">
           ${DISTS.map(d=>`<option value="${d}"${d===v.dist?' selected':''}>${d}</option>`).join('')}
         </select>
       </td>
-      <td><input type="number" value="${isNaN(v.p1)?'':v.p1}" style="width:62px" oninput="vars[${i}].p1=parseFloat(this.value)||0"></td>
-      <td><input type="number" value="${isNaN(v.p2)?'':v.p2}" style="width:62px" ${DINFO[v.dist].single?'disabled placeholder="auto"':''} oninput="vars[${i}].p2=parseFloat(this.value)"></td>
+      <td><input type="number" step="any" value="${Number.isFinite(v.p1)?v.p1:''}" style="width:62px" title="${escHtml(info.p1)}" oninput="vars[${i}].p1=parseFloat(this.value)"></td>
+      <td><input type="number" step="any" value="${Number.isFinite(v.p2)&&!info.single?v.p2:''}" style="width:62px" title="${escHtml(info.p2)}" ${info.single?'disabled placeholder="auto"':''} oninput="vars[${i}].p2=parseFloat(this.value)"></td>
       <td><button class="del" onclick="delVar(${i})">×</button></td>
     `;
+    // The two parameter columns mean different things per distribution
+    // (mean/std, min/max, or a single mean): the hint line explains the row in use.
+    tr.addEventListener('focusin',()=>updateHint(i));
     tb.appendChild(tr);
   });
-  // update column headers from first variable
-  const info=DINFO[vars[0]?.dist]||{p1:'Param 1',p2:'Param 2'};
-  document.getElementById('ph1').textContent=info.p1;
-  document.getElementById('ph2').textContent=info.p2;
+  if(activeRow>=vars.length)activeRow=vars.length-1;
+  updateHint(activeRow);
 }
 
 function updateHint(i){
-  const info=DINFO[vars[i].dist];
-  if(info) document.getElementById('dhint').textContent=info.hint;
-  // update headers to match changed row
-  const info0=DINFO[vars[i].dist];
-  document.getElementById('ph1').textContent=info0.p1;
-  document.getElementById('ph2').textContent=info0.p2;
+  const v=vars[i];if(!v)return;
+  activeRow=i;
+  const info=DINFO[v.dist];
+  document.getElementById('dhint').textContent=`Row ${i+1} (${v.dist}):  ${info.hint}`;
+  // Headers must be right for every row at once: uniform rows hold min / max instead of mean / std.
+  const nUni=vars.filter(x=>x.dist==='uniform').length,allUni=nUni===vars.length;
+  document.getElementById('ph1').textContent=allUni?'Min (a)':nUni?'Mean | Min':'Mean';
+  document.getElementById('ph2').textContent=allUni?'Max (b)':nUni?'Std dev | Max':'Std dev';
 }
 
 function addVar(){
@@ -1073,7 +1257,7 @@ function delVar(i){
 //  CORRELATION TABLE
 // ═══════════════════════════════════════════════════════════════════
 function renderCorr(){
-  const d=vars.length,names=vars.map(v=>v.name);
+  const d=vars.length,names=vars.map(v=>escHtml(v.name));
   // Hide correlation section entirely when only 1 variable
   const corrSec=document.getElementById('corr-section');
   if(corrSec) corrSec.style.display=d<=1?'none':'block';
@@ -1085,7 +1269,10 @@ function renderCorr(){
     h+=`<tr><th>${names[i]}</th>`;
     for(let j=0;j<d;j++){
       if(i===j) h+=`<td><input class="diag" type="number" value="1.000" readonly></td>`;
-      else h+=`<td><input type="number" step="0.05" min="-0.999" max="0.999" value="${R[i][j].toFixed(3)}" onchange="R[${i}][${j}]=parseFloat(this.value);valCorr()"></td>`;
+      else{
+        const v=R[i][j],txt=!Number.isFinite(v)?'':(Math.abs(v*1000-Math.round(v*1000))<1e-9?v.toFixed(3):String(v));
+        h+=`<td><input id="c_${i}_${j}" type="number" step="0.05" min="-0.999" max="0.999" value="${txt}" onchange="setCorr(${i},${j},this.value,this)"></td>`;
+      }
     }
     h+='</tr>';
   }
@@ -1093,11 +1280,24 @@ function renderCorr(){
   valCorr();
 }
 
+// A correlation matrix is symmetric, so an edit of r(i,j) is mirrored to r(j,i).
+function setCorr(i,j,val,el){
+  if(el&&!el.isConnected)return;      // late event from a cell of an already re-drawn table: ignore
+  const v=parseFloat(val);
+  R[i][j]=v;R[j][i]=v;
+  const m=document.getElementById(`c_${j}_${i}`);
+  if(m)m.value=Number.isFinite(v)?val:'';
+  valCorr();
+}
+
 function valCorr(){
-  const el=document.getElementById('cstatus');
-  if(R.length<=1){el.className='cstatus ok';el.textContent='✔  Single variable — no correlation needed';return true}
-  for(let i=0;i<R.length;i++)for(let j=0;j<R.length;j++)if(Math.abs(R[i][j]-R[j][i])>1e-9){el.className='cstatus bad';el.textContent='⚠ Not symmetric — use Auto-symmetrise';return false}
-  if(!isPD(R)){el.className='cstatus bad';el.textContent='❌ Not positive definite — adjust values';return false}
+  const el=document.getElementById('cstatus'),d=R.length;
+  const bad=msg=>{el.className='cstatus bad';el.textContent=msg;return false};
+  if(d<=1){el.className='cstatus ok';el.textContent='✔  Single variable — no correlation needed';return true}
+  for(let i=0;i<d;i++)for(let j=0;j<d;j++)if(!Number.isFinite(R[i][j]))return bad('⚠ Empty or invalid cell — every correlation needs a number');
+  for(let i=0;i<d;i++)for(let j=0;j<d;j++)if(i!==j&&Math.abs(R[i][j])>=1)return bad('❌ Off-diagonal values must lie strictly between −1 and 1');
+  for(let i=0;i<d;i++)for(let j=0;j<d;j++)if(Math.abs(R[i][j]-R[j][i])>1e-9)return bad('⚠ Not symmetric — use Auto-symmetrise');
+  if(!isPD(R))return bad('❌ Not positive definite — these correlations cannot all hold together; reduce the largest ones');
   el.className='cstatus ok';el.textContent='✔  Symmetric positive definite — OK';return true;
 }
 
@@ -1120,7 +1320,7 @@ function showTab(idx){
   // The scatter matrix sizes itself from the visible container width, so it
   // must be (re)drawn AFTER its panel becomes visible.
   if(idx===2 && _scatterData){
-    drawScatter(_scatterData.X, _scatterData.Rf);
+    drawScatter(_scatterData.X, _scatterData.Rf, _scatterData.names);
   }
 }
 
@@ -1129,17 +1329,23 @@ function showTab(idx){
 // ═══════════════════════════════════════════════════════════════════
 function run(){
   if(!valCorr()){setStatus('Fix correlation matrix first.','err');return}
-  const n=parseInt(document.getElementById('n-samples').value);
-  if(isNaN(n)||n<2){setStatus('n must be ≥ 2.','err');return}
+  const nRaw=Number(document.getElementById('n-samples').value),n=Math.round(nRaw);
+  if(!Number.isFinite(nRaw)||n<2){setStatus('n must be a whole number ≥ 2.','err');return}
+  if(n>N_MAX){setStatus(`n must be ≤ ${N_MAX}.`,'err');return}
   // ── Validate mean/std inputs and convert to native parameters ────────
   // vars[i].p1, p2 hold MEAN and STD (or MIN/MAX for uniform).
   // We build nativeVars[] with the distribution's native parameters.
   const nativeVars=[];
   const convLog=[];
+  const softWarnings=[];
   for(let i=0;i<vars.length;i++){
     const v=vars[i];
     if(!v.name.trim()){setStatus(`Variable ${i+1} has no name.`,'err');return}
     const single=DINFO[v.dist].single;
+    const lab=v.dist==='uniform'?['Min a','Max b']:['Mean','Std dev'];
+    // an empty or non-numeric field must stop the run (it would otherwise spread NaN into the samples)
+    if(!Number.isFinite(v.p1)){setStatus(`${lab[0]} for "${v.name}" is missing or not a number.`,'err');return}
+    if(!single&&!Number.isFinite(v.p2)){setStatus(`${lab[1]} for "${v.name}" is missing or not a number.`,'err');return}
 
     if(v.dist==='uniform'){
       if(v.p2<=v.p1){setStatus(`Max b must be > Min a for "${v.name}".`,'err');return}
@@ -1152,66 +1358,75 @@ function run(){
     // Convert to native parameters
     const c=toNative(v.dist, v.p1, single?undefined:v.p2);
     if(!c.ok){setStatus(`"${v.name}" (${v.dist}): ${c.msg}`,'err');return}
+    if(!Number.isFinite(c.p1)||(!single&&!Number.isFinite(c.p2))){setStatus(`"${v.name}" (${v.dist}): these inputs cannot be converted to distribution parameters.`,'err');return}
 
     // ── Native-parameter bounds (post-conversion safety) ────────────────
     if(v.dist==='frechet'&&c.p1<=2){setStatus(`"${v.name}": Fréchet requires α>2 (CV too high for finite variance).`,'err');return}
     if(v.dist==='loglogistic'&&c.p2<=2){setStatus(`"${v.name}": Log-logistic requires β>2 (CV too high for finite variance).`,'err');return}
     if(v.dist==='weibull'&&c.p1<0.1){setStatus(`"${v.name}": resulting Weibull shape k<0.1 (degenerate).`,'err');return}
-    if(v.dist==='gamma'&&c.p1<0.1){setStatus(`"${v.name}": resulting Gamma shape α<0.1 (degenerate).`,'err');return}
+    if(v.dist==='gamma'&&c.p1<0.1){setStatus(`"${v.name}": CV=${(v.p2/v.p1).toFixed(2)} too high for a practical Gamma (max CV≈3.16, shape α≥0.1).`,'err');return}
     if(v.dist==='lognormal'&&c.p2>5){setStatus(`"${v.name}": resulting σ_ln>5 (samples span too many orders of magnitude).`,'err');return}
 
     nativeVars.push({name:v.name, dist:v.dist, p1:c.p1, p2:c.p2});
 
+    // ── Notes (non-blocking): shown in the status bar and in the conversion log ──
+    let note='';
+    if(v.dist==='exponential') note='single-parameter: std is forced equal to the mean (CV = 100 %)';
+    if(v.dist==='rayleigh')    note='single-parameter: std is fixed by the mean (CV = 52.3 %)';
+    if(v.dist==='weibull'&&c.p1<1) note=`high CV → shape k=${c.p1.toFixed(2)} < 1: J-shaped density (mode at 0)`;
+    if(v.dist==='gamma'&&c.p1<1)   note=`high CV → shape α=${c.p1.toFixed(2)} < 1: J-shaped density (mode at 0)`;
+    if(note)softWarnings.push(`"${v.name}": ${note}`);
+
     // Build conversion log entry
-    const lbl=nativeLabels(v.dist);
+    const lbl=nativeLabels(v.dist), ts=thStats(v.dist,c.p1,c.p2);
     convLog.push({name:v.name, dist:v.dist, inMean:v.p1, inStd:single?null:v.p2,
-                  isUniform:v.dist==='uniform', l1:lbl[0], v1:c.p1, l2:lbl[1], v2:c.p2});
+                  isUniform:v.dist==='uniform', l1:lbl[0], v1:c.p1, l2:lbl[1], v2:c.p2,
+                  thMu:ts.mu, thSig:ts.sig, note});
   }
   window._convLog=convLog;   // stored for the conversion log panel
 
-  // ── Soft warnings (non-blocking) ────────────────────────────────────
-  const softWarnings=[];
-  for(let i=0;i<nativeVars.length;i++){
-    const nv=nativeVars[i], v=vars[i];
-    if(v.dist==='exponential')
-      softWarnings.push(`"${v.name}": Exponential — std is forced equal to mean (COV=100%)`);
-    if(v.dist==='rayleigh')
-      softWarnings.push(`"${v.name}": Rayleigh — std is fixed by mean (COV≈52%)`);
-    if(v.dist==='weibull'&&nv.p1<0.5)
-      softWarnings.push(`"${v.name}": high CV → Weibull k=${nv.p1.toFixed(2)} < 0.5 (J-shaped)`);
-    if(v.dist==='gamma'&&nv.p1<0.5)
-      softWarnings.push(`"${v.name}": high CV → Gamma α=${nv.p1.toFixed(2)} < 0.5 (J-shaped)`);
+  // ── SA settings (only used when there are at least two variables) ────
+  const maxIter=Number(document.getElementById('sa-iter').value);
+  const T0=Number(document.getElementById('sa-t0').value);
+  const Tmin=Number(document.getElementById('sa-tmin').value);
+  const alpha=Number(document.getElementById('sa-alpha').value);
+  if(vars.length>1){
+    if(!Number.isFinite(maxIter)||maxIter<0){setStatus('SA: max iterations must be a number ≥ 0.','err');return}
+    if(!(T0>0)){setStatus('SA: initial temperature T₀ must be > 0.','err');return}
+    if(!(Tmin>0)||!(Tmin<T0)){setStatus('SA: T_min must be > 0 and smaller than T₀.','err');return}
+    if(!(alpha>0&&alpha<1)){setStatus('SA: cooling factor α must lie strictly between 0 and 1 (e.g. 0.9999).','err');return}
   }
-  if(softWarnings.length>0){
-    setStatus('⚠ '+softWarnings.join(' | ')+' — Running…','running');
-  }
-  const maxIter=+document.getElementById('sa-iter').value;
-  const T0=+document.getElementById('sa-t0').value;
-  const Tmin=+document.getElementById('sa-tmin').value;
-  const alpha=+document.getElementById('sa-alpha').value;
-  setStatus('Running SA…','running');
+  const names=vars.map(v=>v.name), Rrun=R.map(r=>[...r]);   // frozen copies for this run
+  setStatus(vars.length>1?'Running SA…':'Sampling…','running');
   document.getElementById('progwrap').style.display='block';
   document.getElementById('progbar').style.width='25%';
   setTimeout(()=>{
     try{
       document.getElementById('progbar').style.width='55%';
-      const{X,Rfin,cost}=runLHS(n,nativeVars,R,maxIter,T0,Tmin,alpha);
+      const{X,Rfin,cost}=runLHS(n,nativeVars,Rrun,maxIter,T0,Tmin,alpha);
+      for(const row of X)for(const v of row)if(!Number.isFinite(v))throw new Error('a non-finite sample value was produced — please report the inputs used');
       resultX=X;
+      _lastNames=names;
       document.getElementById('progbar').style.width='80%';
-      _lastRtgt=R.map(r=>[...r]);
+      _lastRtgt=Rrun;
       _lastRfin=Rfin.map(r=>[...r]);
-      drawHM('hm-tgt',R,-1,1);
-      drawHM('hm-fin',Rfin,-1,1);
-      const E=R.map((row,i)=>row.map((v,j)=>Math.abs(v-Rfin[i][j])));
-      drawHM('hm-err',E,0,.1);
+      drawHM('hm-tgt',Rrun,-1,1,names);
+      drawHM('hm-fin',Rfin,-1,1,names);
+      const E=Rrun.map((row,i)=>row.map((v,j)=>Math.abs(v-Rfin[i][j])));
+      drawHM('hm-err',E,0,.1,names);
       document.getElementById('frob').textContent=cost.toFixed(5);
       drawMarginals(X,nativeVars);
-      drawScatter(X,Rfin);
+      drawScatter(X,Rfin,names);
       drawSampleTable(X,nativeVars);
       drawConvLog(X,nativeVars);
+      // the scatter matrix sizes itself from its visible container: redraw if that tab is open
+      if(document.getElementById('tp2').classList.contains('active'))drawScatter(X,Rfin,names);
       document.getElementById('progbar').style.width='100%';
       setTimeout(()=>document.getElementById('progwrap').style.display='none',500);
-      setStatus(vars.length===1?`Done — ${n} samples generated for 1 variable  ✔`:`Done — Frobenius error: ${cost.toFixed(5)}  (n=${n}, d=${vars.length})  ✔`,'ok');
+      let maxDev=0;for(let i=0;i<E.length;i++)for(let j=0;j<E.length;j++)maxDev=Math.max(maxDev,E[i][j]);
+      if(maxDev>0.02)softWarnings.unshift(`target correlation not reached (largest deviation ${maxDev.toFixed(3)}): these marginals may not admit it (Pearson correlation is bounded for non-normal pairs), or SA needs more iterations`);
+      const notes=softWarnings.length?`   ⚠ Note — ${softWarnings.join(' | ')}`:'';
+      setStatus((names.length===1?`Done — ${n} samples generated for 1 variable  ✔`:`Done — Frobenius error: ${cost.toFixed(5)}  (n=${n}, d=${names.length})  ✔`)+notes,'ok');
     }catch(e){setStatus('Error: '+e.message,'err');document.getElementById('progwrap').style.display='none'}
   },40);
 }
@@ -1265,7 +1480,7 @@ function savePNG(){
   // ── Tab 0: Correlation heatmaps ─────────────────────────────────
   if(idx===0){
     if(!resultX){alert('Run the sampler first.');return}
-    const d=vars.length, names=vars.map(v=>v.name);
+    const names=_lastNames, d=names.length;
     const cellW=64, cellH=38, headerH=24, pad=16;
     const matW=(d+1)*cellW, matH=headerH+(d+1)*cellH;
     const out=document.createElement('canvas');
@@ -1300,7 +1515,7 @@ function savePNG(){
     // row-major order (diagonal cells are name labels, not canvases), so a
     // consecutive-slot merge would shift every cell. Rebuild the true d×d
     // grid, skipping i===j, and draw the variable names on the diagonal.
-    const d=vars.length;
+    const names=_scatterData.names, d=names.length;
     const out=document.createElement('canvas');out.width=cw*d;out.height=ch*d;
     const ctx=out.getContext('2d');
     ctx.fillStyle='#161b26';ctx.fillRect(0,0,out.width,out.height);
@@ -1310,7 +1525,7 @@ function savePNG(){
       if(i===j){
         ctx.fillStyle='#252d40';ctx.fillRect(px+1,py+1,cw-2,ch-2);
         ctx.fillStyle='#4285f4';ctx.font='bold '+Math.max(10,Math.floor(cw/8))+'px monospace';
-        const nm=vars[i].name, tw=ctx.measureText(nm).width;
+        const nm=names[i], tw=ctx.measureText(nm).width;
         ctx.fillText(nm, px+(cw-tw)/2, py+ch/2+4);
       } else {
         ctx.drawImage(canvases[k++], px, py);
@@ -1320,12 +1535,23 @@ function savePNG(){
     a.download='scatter_matrix.png';a.click();return;
   }
 
-  // Tab 1: marginal PDF grid (canvases match the on-screen grid 1:1)
+  // Tab 1: marginal PDFs. Each chart is exported with its title and its statistics /
+  // test results, so the figure can be read without the page around it.
+  const k=cw/(canvases[0].clientWidth||cw);                 // device-pixel ratio of the chart canvases
+  const lh=15*k, padT=24*k, padX=12*k;
+  const maxLines=_margMeta.reduce((m,e)=>Math.max(m,e.lines.length),0);
+  const cellH=padT+ch+(maxLines+1)*lh;
   const nc=Math.ceil(Math.sqrt(canvases.length)), nr=Math.ceil(canvases.length/nc);
-  const out=document.createElement('canvas');out.width=cw*nc;out.height=ch*nr;
+  const out=document.createElement('canvas');out.width=cw*nc;out.height=cellH*nr;
   const ctx=out.getContext('2d');
   ctx.fillStyle='#161b26';ctx.fillRect(0,0,out.width,out.height);
-  canvases.forEach((c,i)=>{ctx.drawImage(c,(i%nc)*cw,Math.floor(i/nc)*ch)});
+  canvases.forEach((c,i)=>{
+    const x0=(i%nc)*cw, y0=Math.floor(i/nc)*cellH, m=_margMeta[i]||{title:'',lines:[]};
+    ctx.fillStyle='#4285f4';ctx.font=`bold ${12*k}px monospace`;ctx.fillText(m.title,x0+padX,y0+16*k);
+    ctx.drawImage(c,x0,y0+padT);
+    ctx.font=`${11*k}px monospace`;
+    m.lines.forEach((ln,q)=>{ctx.fillStyle=ln.c;ctx.fillText(ln.t,x0+padX,y0+padT+ch+(q+1)*lh)});
+  });
   const a=document.createElement('a');a.href=out.toDataURL('image/png');
   a.download='marginal_pdfs.png';a.click();
 }
@@ -1333,8 +1559,9 @@ function savePNG(){
 function saveCSV(){
   if(!resultX){alert('Run the sampler first.');return}
   const esc=s=>{s=String(s);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
-  let csv=vars.map(v=>esc(v.name)).join(',')+'\n';
-  resultX.forEach(row=>{csv+=row.map(v=>v.toFixed(6)).join(',')+'\n'});
+  // 10 significant digits: full precision whatever the magnitude of the variable
+  let csv=_lastNames.map(esc).join(',')+'\n';
+  resultX.forEach(row=>{csv+=row.map(v=>fmtNum(v,10)).join(',')+'\n'});
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
   a.download='lhs_samples.csv';a.click();
 }

@@ -84,6 +84,15 @@ select option{background:var(--panel2)}
 
 /* ── n row ── */
 .nrow{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+/* sample-bounds selector + bound columns */
+.bmode{border:1px solid var(--border);border-radius:5px;padding:7px 9px;margin-bottom:10px;background:var(--panel2)}
+.bmode-title{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--txt2);margin-bottom:4px}
+.bmode label{display:flex;align-items:flex-start;gap:7px;font-size:11px;color:var(--txt2);cursor:pointer;padding:2px 0;line-height:1.35}
+.bmode label input{margin-top:2px}
+.bmode label b{color:var(--txt);font-weight:600}
+.bmode label span{color:var(--txt3);font-size:10px}
+.vtbl .bcol{display:none}
+.vtbl.bounded .bcol{display:table-cell}
 .nrow label{margin:0;white-space:nowrap;font-size:12px;color:var(--txt)}
 .nrow input{width:80px;flex-shrink:0}
 
@@ -129,11 +138,14 @@ select option{background:var(--panel2)}
 
 /* ── status bar ── */
 #statusbar{
-  border-top:1px solid var(--border);padding:8px 14px;
-  font-family:var(--mono);font-size:11px;color:var(--txt2);
-  display:flex;align-items:center;gap:8px;flex-shrink:0;
-  margin-top:auto
+  position:sticky;top:0;z-index:5;         /* stays visible while the sidebar scrolls */
+  border-bottom:1px solid var(--border);padding:8px 14px;background:var(--panel);
+  font-family:var(--mono);font-size:11px;color:var(--txt2);line-height:1.45;
+  display:flex;align-items:flex-start;gap:8px;flex-shrink:0
 }
+#statusbar .dot{margin-top:4px}
+#statusbar.err{background:#3a1f22;color:#ffb4a8;border-bottom-color:var(--warn)}   /* errors stand out */
+#statusbar.ok{color:var(--txt)}
 #statusbar .dot{width:7px;height:7px;border-radius:50%;background:var(--txt3);flex-shrink:0}
 #statusbar.running .dot{background:var(--accent);animation:pulse 1s infinite}
 #statusbar.ok      .dot{background:var(--green)}
@@ -157,7 +169,7 @@ select option{background:var(--panel2)}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:14px;margin-bottom:14px}
 .card h3{font-family:var(--mono);font-size:10px;color:var(--txt2);margin-bottom:10px;
          letter-spacing:.06em;text-transform:uppercase}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 
 /* ── heatmap ── */
 .heatmap{border-collapse:collapse;font-size:11px;font-family:var(--mono);margin:auto}
@@ -189,7 +201,7 @@ select option{background:var(--panel2)}
 .convname{color:var(--accent);font-weight:700;margin-bottom:5px}
 .convdist{color:var(--txt3);font-weight:400;font-size:10px;margin-left:6px}
 .convline{color:var(--txt2);line-height:1.7}
-.convline .lbl{color:var(--txt3);display:inline-block;width:62px}
+.convline .lbl{color:var(--txt3);display:inline-block;width:66px}
 
 /* ── toolbar ── */
 .toolbar{display:flex;gap:8px;margin-bottom:12px}
@@ -203,7 +215,7 @@ select option{background:var(--panel2)}
 
 <div id="topbar">
   <h1>LHS Correlated Sampler</h1>
-  <span>LHS_CorrelatedSampler v3.2 · TA CR – SIGMA</span>
+  <span>LHS_CorrelatedSampler v4.0 · TA CR – SIGMA</span>
   <span style="margin-left:auto;font-size:11px;color:var(--txt2);font-family:var(--mono)">Özgür Yurdakul  |  Faculty of Transport Engineering, University of Pardubice · CC BY-NC-SA 4.0</span>
 </div>
 
@@ -212,6 +224,9 @@ select option{background:var(--panel2)}
 <!-- ══════════════════════════════════════ SIDEBAR ══════════════════════════ -->
 <div id="sidebar">
 
+  <!-- status / error messages: pinned to the top of the sidebar -->
+  <div id="statusbar"><div class="dot"></div><span id="stxt">Ready.</span></div>
+
   <!-- n + variables -->
   <div class="sec">
     <div class="sec-title">Random Variables</div>
@@ -219,11 +234,17 @@ select option{background:var(--panel2)}
       <label>Number of samples  n =</label>
       <input type="number" id="n-samples" value="30" min="2" max="10000">
     </div>
+    <div class="bmode" id="bmode">
+      <div class="bmode-title">Sample bounds</div>
+      <label><input type="radio" name="bmode" value="A" checked><span><b>A · No bounds</b> — samples follow the full distributions</span></label>
+      <label><input type="radio" name="bmode" value="B"><span><b>B · Bounds cut the distribution</b> — mean / std describe the full distribution; the bounded sample's mean / std shift (see log)</span></label>
+      <label><input type="radio" name="bmode" value="C"><span><b>C · Bounds keep mean / std</b> — mean / std are those of the bounded sample; the full distribution is solved for</span></label>
+    </div>
     <table class="vtbl" id="vtbl">
       <thead>
         <tr>
           <th>#</th><th>Name</th><th>Distribution</th>
-          <th id="ph1">Param 1</th><th id="ph2">Param 2</th><th></th>
+          <th id="ph1">Param 1</th><th id="ph2">Param 2</th><th class="bcol" title="blank = no lower limit">Lower</th><th class="bcol" title="blank = no upper limit">Upper</th><th></th>
         </tr>
       </thead>
       <tbody id="vtbody"></tbody>
@@ -267,7 +288,7 @@ select option{background:var(--panel2)}
     <label class="chkrow"><input type="checkbox" id="gof-ad"  checked> Anderson-Darling (AD)</label>
     <label class="chkrow"><input type="checkbox" id="gof-chi" checked> Chi-squared (χ²)</label>
     <label class="chkrow"><input type="checkbox" id="gof-ll"  checked> Lilliefors (LL)</label>
-    <div class="hint">KS, AD, χ²: against the specified distribution · LL: parameters re-estimated from the sample. A Latin-hypercube sample is stratified, so it fits its target better than a random sample and p ≈ 1 is the expected result.</div>
+    <div class="hint">KS, AD, χ²: against the specified (bounded, if bounds are set) distribution · LL: parameters re-estimated from the sample; not available for bounded variables. A Latin-hypercube sample is stratified, so it fits its target better than a random sample and p ≈ 1 is the expected result.</div>
   </div>
 
   <!-- Run -->
@@ -306,8 +327,7 @@ select option{background:var(--panel2)}
     <div style="font-size:10px;color:var(--txt3);margin-top:2px;">CC BY-NC-SA 4.0</div>
   </div>
 
-  <div id="statusbar"><div class="dot"></div><span id="stxt">Ready.</span></div>
-  <div style="padding:6px 14px;font-size:10px;color:var(--txt3);border-top:1px solid var(--border);text-align:center;flex-shrink:0;">
+  <div style="padding:6px 14px;font-size:10px;color:var(--txt3);border-top:1px solid var(--border);text-align:center;flex-shrink:0;margin-top:auto">
     Özgür Yurdakul  |  Faculty of Transport Engineering, University of Pardubice · CC BY-NC-SA 4.0
   </div>
 </div>
@@ -346,7 +366,7 @@ select option{background:var(--panel2)}
 
   <!-- Tab 2: Scatter -->
   <div class="tabpanel" id="tp2">
-    <div class="card" id="scatter-wrap"></div>
+    <div class="card" id="scatter-wrap" style="overflow-x:auto"></div>
   </div>
 
   <!-- Tab 3: Sample table -->
@@ -375,11 +395,14 @@ select option{background:var(--panel2)}
 //  STATE  (default example)
 // ═══════════════════════════════════════════════════════════════════
 let vars = [
-  {name:'fy',  dist:'normal',    p1:10, p2:2  },   // mean=10, std=2
-  {name:'fu',  dist:'lognormal', p1:5,  p2:1  },   // mean=5,  std=1
-  {name:'Es',  dist:'weibull',   p1:5,  p2:2  },   // mean=5,  std=2
-  {name:'eps', dist:'rayleigh',  p1:4,  p2:NaN},   // mean=4   (std auto)
+  {name:'fy',  dist:'normal',    p1:10, p2:2,   L:NaN, U:NaN},   // mean=10, std=2
+  {name:'fu',  dist:'lognormal', p1:5,  p2:1,   L:NaN, U:NaN},   // mean=5,  std=1
+  {name:'Es',  dist:'weibull',   p1:5,  p2:2,   L:NaN, U:NaN},   // mean=5,  std=2
+  {name:'eps', dist:'rayleigh',  p1:4,  p2:NaN, L:NaN, U:NaN},   // mean=4   (std auto)
 ];
+// Sample bounds: 'A' none (default) · 'B' bounds cut the full distribution ·
+// 'C' bounds keep the requested mean/std (the full distribution is solved for).
+let boundMode = 'A';
 
 let R = [
   [1.0, 0.6, 0.3, 0.1],
@@ -400,6 +423,8 @@ const N_MAX   = 10000;  // largest sample size accepted
 function escHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 // Number → text with `sig` significant digits (never rounds a small value to 0.0000)
 function fmtNum(v,sig){return Number.isFinite(v)?String(Number(v.toPrecision(sig||6))):String(v)}
+// Bounds as text: "[300, 400]", "x ≥ 2" or "x ≤ 14"
+function boundStr(L,U){const f=x=>fmtNum(x,6),l=Number.isFinite(L),u=Number.isFinite(U);return l&&u?`[${f(L)}, ${f(U)}]`:l?`x ≥ ${f(L)}`:u?`x ≤ ${f(U)}`:'none'}
 function minMax(a){let lo=Infinity,hi=-Infinity;for(const v of a){if(v<lo)lo=v;if(v>hi)hi=v}return[lo,hi]}
 
 const DISTS = ['normal','lognormal','weibull','gamma','rayleigh',
@@ -455,24 +480,28 @@ function gamPref(x,a){
   return Math.sqrt(a/(2*Math.PI))*Math.exp(-a*phi-(1/(12*a)-1/(360*a*a2)+1/(1260*a2*a2*a)));
 }
 function gamcdf_lower(x,a){
+  if(Number.isNaN(x))return NaN;
   if(x<=0)return 0;
   let s=1,t=1;
   for(let n=1;n<200000;n++){t*=x/(a+n);s+=t;if(t<1e-16*s)break}
   return gamPref(x,a)*s/a;
 }
 function gamcdf_upper(x,a){
+  if(!Number.isFinite(x))return x===Infinity?0:NaN;
   let b=x+1-a,c=1/1e-30,d=1/b,h=d;
   for(let i=1;i<200000;i++){const an=-i*(i-a);b+=2;d=an*d+b;if(Math.abs(d)<1e-30)d=1e-30;c=b+an/c;if(Math.abs(c)<1e-30)c=1e-30;d=1/d;const del=d*c;h*=del;if(Math.abs(del-1)<1e-15)break}
   return gamPref(x,a)*h;
 }
-function gamcdf(x,a){if(x<=0)return 0;return x<a+1?gamcdf_lower(x,a):1-gamcdf_upper(x,a)}   // P(a,x)
-function gamsf(x,a){if(x<=0)return 1;return x<a+1?1-gamcdf_lower(x,a):gamcdf_upper(x,a)}    // Q(a,x)=1-P
+function gamcdf(x,a){if(Number.isNaN(x))return NaN;if(x===Infinity)return 1;if(x<=0)return 0;return x<a+1?gamcdf_lower(x,a):1-gamcdf_upper(x,a)}   // P(a,x)
+function gamsf(x,a){if(Number.isNaN(x))return NaN;if(x===Infinity)return 0;if(x<=0)return 1;return x<a+1?1-gamcdf_lower(x,a):gamcdf_upper(x,a)}    // Q(a,x)=1-P
 
 // ── Normal distribution ───────────────────────────────────────────
 // erfc(x)=Q(½,x²): reuses the incomplete gamma above and keeps full RELATIVE
 // accuracy in the tails (the tail probabilities are what the AD test weighs).
 function erfc(x){
+  if(Number.isNaN(x))return NaN;
   if(x<0)return 2-erfc(-x);
+  if(x>27)return 0;                      // erfc(27) < 1e-318: below the smallest double
   const x2=x*x;
   return x2<1.5?1-gamcdf_lower(x2,.5):gamcdf_upper(x2,.5);
 }
@@ -501,26 +530,31 @@ function norminv(p){
 
 function gaminv(p,a){
   if(p<=0)return 0;if(p>=1)return Infinity;
-  // Wilson–Hilferty initial guess; series-inversion fallback in the deep
-  // lower tail (F ≈ x^a/Γ(a+1)  ⇒  x ≈ (p·Γ(a+1))^(1/a)).
-  const zz=norminv(p), wh=1-1/(9*a)+zz/(3*Math.sqrt(a));
-  let x=wh>0 ? a*wh*wh*wh : Math.exp((Math.log(p)+lgamma(a+1))/a);
-  if(!isFinite(x)||x<=0)x=a;
-  // Safeguarded Newton: maintain bracket [lo,hi] with F(lo)<p<F(hi);
-  // bisect whenever a step is non-finite or leaves the bracket.
-  // (An unguarded Newton diverges for a∈(1.2,2.6) at small p.)
-  let lo=0,hi=Infinity;
-  for(let i=0;i<200;i++){
-    const fx=gamcdf(x,a)-p;
-    if(Math.abs(fx)<=1e-14*p)break;
-    if(fx>0)hi=Math.min(hi,x);else lo=Math.max(lo,x);
-    const fpx=gamPref(x,a)/x;
-    let xn=x-fx/fpx;
-    if(!isFinite(xn)||xn<=lo||xn>=hi) xn=isFinite(hi)?0.5*(lo+hi):2*x;
-    if(Math.abs(xn-x)<=1e-12*x){x=xn;break}
-    x=xn;
+  // Solve ln P(a,x) = ln p (p ≤ ½) or ln Q(a,x) = ln(1−p) (p > ½) for y = ln x.
+  // Both are smooth and monotone in y, so a safeguarded Newton step (bisection
+  // inside a bracket, fixed log-steps while the bracket is still open) converges
+  // from any start — including probabilities far below 1e-100.
+  const lower=p<=.5,target=lower?Math.log(p):Math.log1p(-p);
+  const zz=norminv(p),wh=1-1/(9*a)+zz/(3*Math.sqrt(a));   // Wilson–Hilferty start,
+  let x=wh>0?a*wh*wh*wh:Math.exp((Math.log(p)+lgamma(a+1))/a);  // small-x series if WH fails
+  if(!(x>0&&Number.isFinite(x))||(!lower&&x<1e-3*a))x=a;          // upper half: never start in the far lower tail
+  let y=Math.log(x),lo=-Infinity,hi=Infinity;
+  for(let i=0;i<300;i++){
+    x=Math.exp(y);
+    const F=lower?gamcdf(x,a):gamsf(x,a),g=Math.log(F)-target;
+    if(Math.abs(g)<=1e-14)break;
+    // y lies above the root? (a NaN evaluation can only come from x overflowing)
+    const tooHigh=Number.isNaN(g)?true:lower?g>0:g<0;
+    if(tooHigh)hi=Math.min(hi,y);else lo=Math.max(lo,y);
+    const dg=(lower?1:-1)*gamPref(x,a)/F;         // d ln F / d ln x = x·f(x)/F
+    let yn=y-g/dg;
+    if(Number.isFinite(yn)&&Math.abs(yn-y)>3)yn=y+(yn>y?3:-3);   // at most a factor e³ per step
+    if(!Number.isFinite(yn)||yn<=lo||yn>=hi)
+      yn=Number.isFinite(lo)&&Number.isFinite(hi)?(lo+hi)/2:(tooHigh?y-1:y+1);
+    if(Math.abs(yn-y)<=1e-15*Math.max(1,Math.abs(y))){y=yn;break}
+    y=yn;
   }
-  return x;
+  return Math.exp(y);
 }
 
 function logninv(p,mu,s){return Math.exp(mu+s*norminv(p))}
@@ -587,7 +621,7 @@ function toNative(dist, m, s){
     case 'uniform':  return {p1:m, p2:s, ok:true};   // m=min, s=max here
     case 'lognormal':{
       const cv2=(s/m)*(s/m);
-      const s2=Math.log(1+cv2);
+      const s2=Math.log1p(cv2);
       return {p1:Math.log(m)-s2/2, p2:Math.sqrt(s2), ok:true};
     }
     case 'gamma':{
@@ -695,7 +729,7 @@ function cdfv(x,dist,p1,p2){
 }
 function thStats(dist,p1,p2){
   if(dist==='normal')      return{mu:p1,sig:p2};
-  if(dist==='lognormal')  {const mu=Math.exp(p1+p2*p2/2);return{mu,sig:Math.sqrt((Math.exp(p2*p2)-1)*Math.exp(2*p1+p2*p2))}}
+  if(dist==='lognormal')  {const mu=Math.exp(p1+p2*p2/2);return{mu,sig:mu*Math.sqrt(Math.expm1(p2*p2))}}
   if(dist==='weibull')    {const mu=p2*Math.exp(lgamma(1+1/p1));return{mu,sig:mu*Math.sqrt(Math.expm1(lgamma(1+2/p1)-2*lgamma(1+1/p1)))}}
   if(dist==='gamma')       return{mu:p1*p2,sig:Math.sqrt(p1)*p2};
   if(dist==='rayleigh')    return{mu:p1*Math.sqrt(Math.PI/2),sig:p1*Math.sqrt((4-Math.PI)/2)};
@@ -708,6 +742,172 @@ function thStats(dist,p1,p2){
   if(dist==='loglogistic'){const mu=p2>1?Math.PI*p1/(p2*Math.sin(Math.PI/p2)):Infinity;
                            const sig=p2>2?p1*Math.sqrt(Math.PI*(2/p2)/Math.sin(2*Math.PI/p2)-Math.PI*Math.PI/(p2*p2)/(Math.sin(Math.PI/p2)*Math.sin(Math.PI/p2))):Infinity;
                            return{mu,sig}}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  BOUNDED (TRUNCATED) DISTRIBUTIONS
+// ═══════════════════════════════════════════════════════════════════
+// A variable may carry bounds L ≤ x ≤ U (null = that side open). The bounded
+// distribution is the parent restricted to [L,U] and renormalised:
+//   F_T(x) = (F(x) − a)/(b − a),  f_T(x) = f(x)/(b − a),  a = F(L), b = F(U),
+//   sampling: x = F⁻¹(a + u·(b − a))   (one value per LHS stratum of u).
+// Without bounds a = 0, b = 1 and every function below returns exactly the
+// parent value, so the unbounded path is bit-for-bit unchanged.
+// Survival function P(X > x) and its inverse, accurate deep in the upper tail
+// (where 1 − F(x) would lose all digits). Used when a bound lies above the median.
+function sfv(x,dist,p1,p2){
+  switch(dist){
+    case 'normal':      return normcdf(-(x-p1)/p2);
+    case 'lognormal':   return x<=0?1:normcdf(-(Math.log(x)-p1)/p2);
+    case 'weibull':     return x<=0?1:Math.exp(-Math.pow(x/p2,p1));
+    case 'gamma':       return gamsf(x/p2,p1);
+    case 'rayleigh':    return x<=0?1:Math.exp(-(x*x)/(2*p1*p1));
+    case 'exponential': return x<=0?1:Math.exp(-p1*x);
+    case 'gumbel':      return -Math.expm1(-Math.exp(-(x-p1)/p2));
+    case 'frechet':     return x<=0?1:-Math.expm1(-Math.pow(p2/x,p1));
+    case 'loglogistic': return x<=0?1:1/(1+Math.pow(x/p1,p2));
+    case 'uniform':     return 1-unicdf(x,p1,p2);
+  }
+}
+function isfRaw(q,dist,p1,p2){
+  q=Math.min(Math.max(q,1e-300),.5);
+  switch(dist){
+    case 'normal':      return p1-p2*norminv(q);
+    case 'lognormal':   return Math.exp(p1-p2*norminv(q));
+    case 'weibull':     return p2*Math.pow(-Math.log(q),1/p1);
+    case 'gamma':       return gaminv2(Math.min(1-q,1-1e-16),p1,p2);   // light tail: 1−q is precise enough
+    case 'rayleigh':    return p1*Math.sqrt(-2*Math.log(q));
+    case 'exponential': return -Math.log(q)/p1;
+    case 'gumbel':      return p1-p2*Math.log(-Math.log1p(-q));
+    case 'frechet':     return p2*Math.pow(-Math.log1p(-q),-1/p1);
+    case 'loglogistic': return p1*Math.pow((1-q)/q,1/p2);
+    case 'uniform':     return p2-q*(p2-p1);
+  }
+}
+// Quantile without the [1e-10, 1−1e-10] clamp of icdf() (used by the quadrature).
+function icdfRaw(p,dist,p1,p2){
+  p=Math.min(Math.max(p,1e-300),1-1e-16);
+  switch(dist){
+    case 'normal':      return p1+p2*norminv(p);
+    case 'lognormal':   return Math.exp(p1+p2*norminv(p));
+    case 'weibull':     return wblinv(p,p2,p1);
+    case 'gamma':       return gaminv2(p,p1,p2);
+    case 'rayleigh':    return raylinv(p,p1);
+    case 'exponential': return expinv(p,p1);
+    case 'gumbel':      return guminv(p,p1,p2);
+    case 'frechet':     return freinv(p,p1,p2);
+    case 'loglogistic': return llinv(p,p1,p2);
+    case 'uniform':     return uninv(p,p1,p2);
+  }
+}
+function truncInfo(dist,p1,p2,L,U){
+  const lo=Number.isFinite(L)?L:null, hi=Number.isFinite(U)?U:null;
+  const a=lo===null?0:cdfv(lo,dist,p1,p2), b=hi===null?1:cdfv(hi,dist,p1,p2);
+  const qa=lo===null?1:sfv(lo,dist,p1,p2), qb=hi===null?0:sfv(hi,dist,p1,p2);
+  const upper=a>=.5;                                   // whole kept range above the median → work with tail probabilities
+  return {L:lo,U:hi,a,b,qa,qb,upper,mass:upper?qa-qb:b-a,bounded:lo!==null||hi!==null};
+}
+function tIcdf(u,v){
+  const t=v.tr;
+  if(!t||!t.bounded)return icdf(u,v.dist,v.p1,v.p2);
+  let x=t.upper?isfRaw(t.qa-u*t.mass,v.dist,v.p1,v.p2):icdf(t.a+u*t.mass,v.dist,v.p1,v.p2);
+  if(t.L!==null&&x<t.L)x=t.L;                 // guards against round-off only
+  if(t.U!==null&&x>t.U)x=t.U;
+  return x;
+}
+function tCdf(x,dist,p1,p2,t){
+  if(!t||!t.bounded)return cdfv(x,dist,p1,p2);
+  if(t.L!==null&&x<=t.L)return 0;
+  if(t.U!==null&&x>=t.U)return 1;
+  const F=t.upper?(t.qa-sfv(x,dist,p1,p2))/t.mass:(cdfv(x,dist,p1,p2)-t.a)/t.mass;
+  return Math.min(1,Math.max(0,F));
+}
+function tPdf(x,dist,p1,p2,t){
+  if(!t||!t.bounded)return pdfv(x,dist,p1,p2);
+  if((t.L!==null&&x<t.L)||(t.U!==null&&x>t.U))return 0;
+  return pdfv(x,dist,p1,p2)/t.mass;
+}
+// ∫_lo^hi g(s) ds by tanh–sinh quadrature, which copes with the integrable
+// end-point singularities of quantile functions; g returns [g1, g2].
+function tsQuad(g,lo,hi){
+  const h=1/16,w0=hi-lo;let s1=0,s2=0;
+  if(!(w0>0))return[0,0];
+  for(let k=-96;k<=96;k++){
+    const t=k*h,u=Math.PI/2*Math.sinh(t),ch=Math.cosh(u),w=Math.PI/2*Math.cosh(t)/(ch*ch);
+    if(!(w>0))continue;
+    const e=Math.exp(-2*Math.abs(u)),f=e/(1+e);                 // stable distance from the nearer end
+    const s=u>=0?hi-w0*f:lo+w0*f;
+    if(!(s>lo&&s<hi))continue;
+    const r=g(s);if(!Number.isFinite(r[0])||!Number.isFinite(r[1]))continue;
+    s1+=w*r[0];s2+=w*r[1];
+  }
+  return [s1*h*w0/2,s2*h*w0/2];
+}
+// Mean and std of the distribution actually sampled (bounded if t is bounded):
+// the kept probability range is integrated directly — below the median in
+// probability p, above it in tail probability q = 1 − p (keeps heavy right tails exact).
+function truncStats(dist,p1,p2,t){
+  if(!t||!t.bounded)return thStats(dist,p1,p2);
+  const c=tIcdf(.5,{dist,p1,p2,tr:t});
+  let m1=0,m2=0;
+  if(!t.upper){const r=tsQuad(p=>{const d=icdfRaw(p,dist,p1,p2)-c;return[d,d*d]},t.a,Math.min(t.b,.5));m1+=r[0];m2+=r[1]}
+  if(t.qb<.5){const r=tsQuad(q=>{const d=isfRaw(q,dist,p1,p2)-c;return[d,d*d]},t.qb,Math.min(t.qa,.5));m1+=r[0];m2+=r[1]}
+  const mm=m1/t.mass;
+  return{mu:c+mm,sig:Math.sqrt(Math.max(0,m2/t.mass-mm*mm))};
+}
+// Option C: find the parent (full-distribution) mean/std whose version cut to
+// [L,U] has exactly mean m and std s. Single-parameter families match the mean only.
+// Returns {ok, p1, p2, tr, pm, ps} or {ok:false, msg}.
+function solveParent(dist,m,s,L,U){
+  const single=DINFO[dist].single,pos=!['normal','gumbel'].includes(dist);
+  let why=null;     // last reason a trial parent was rejected (reported if the search fails)
+  const evalAt=(pm,ps)=>{
+    const c=toNative(dist,pm,single?undefined:ps);
+    if(!c.ok||!Number.isFinite(c.p1)||(!single&&!Number.isFinite(c.p2))){why={limit:c.msg||'parameters out of range'};return null}
+    const tr=truncInfo(dist,c.p1,c.p2,L,U);
+    if(!(tr.mass>1e-9)){why={mass:true};return null}
+    const st=truncStats(dist,c.p1,c.p2,tr);
+    if(!Number.isFinite(st.mu)||!Number.isFinite(st.sig))return null;
+    return{c,tr,st,pm,ps};
+  };
+  const done=r=>({ok:true,p1:r.c.p1,p2:r.c.p2,tr:r.tr,pm:r.pm,ps:r.ps});
+  if(single){
+    // scale family: the bounded mean grows monotonically with the parent mean.
+    // Bracket the root by stepping outward from ln m, then bisect.
+    let y0=Math.log(m),r0=evalAt(m);
+    if(!r0)return{ok:false,why};
+    let lo=null,hi=null;
+    if(r0.st.mu<m){lo=y0;for(let y=y0+.5;y<y0+60;y+=.5){const r=evalAt(Math.exp(y));if(!r)break;if(r.st.mu>=m){hi=y;break}lo=y}}
+    else{hi=y0;for(let y=y0-.5;y>y0-60;y-=.5){const r=evalAt(Math.exp(y));if(!r)break;if(r.st.mu<=m){lo=y;break}hi=y}}
+    if(lo===null||hi===null)return{ok:false,why};
+    let best=null;
+    for(let it=0;it<200;it++){const mid=(lo+hi)/2,r=evalAt(Math.exp(mid));if(!r)return{ok:false,why};best=r;if(r.st.mu<m)lo=mid;else hi=mid;if(hi-lo<1e-14*Math.max(1,Math.abs(mid)))break}
+    return Math.abs(best.st.mu-m)<=1e-9*Math.abs(m)?done(best):{ok:false,why};
+  }
+  // two parameters: damped Newton on z = (mean or ln mean, ln std); residuals scaled by s
+  const toP=z=>[pos?Math.exp(z[0]):z[0],Math.exp(z[1])];
+  const res=z=>{const [pm,ps]=toP(z),r=evalAt(pm,ps);if(!r)return null;r.f=[(r.st.mu-m)/s,(r.st.sig-s)/s];r.n=Math.hypot(r.f[0],r.f[1]);return r};
+  let z=[pos?Math.log(m):m,Math.log(s)],cur=res(z);
+  if(!cur)return{ok:false,why};
+  for(let it=0;it<80&&cur.n>1e-11;it++){
+    const J=[[0,0],[0,0]];
+    for(let k=0;k<2;k++){
+      const hk=k===0&&!pos?1e-6*s:1e-6,zz=[...z];zz[k]+=hk;let r=res(zz),sg=1;
+      if(!r){zz[k]=z[k]-hk;r=res(zz);sg=-1}
+      if(!r)return{ok:false,why};
+      J[0][k]=sg*(r.f[0]-cur.f[0])/hk;J[1][k]=sg*(r.f[1]-cur.f[1])/hk;
+    }
+    const det=J[0][0]*J[1][1]-J[0][1]*J[1][0];
+    if(!Number.isFinite(det)||Math.abs(det)<1e-300)break;
+    let dz=[-(J[1][1]*cur.f[0]-J[0][1]*cur.f[1])/det,-(-J[1][0]*cur.f[0]+J[0][0]*cur.f[1])/det];
+    const cap=2;const big=Math.max(Math.abs(dz[0])/(pos?1:s),Math.abs(dz[1]));if(big>cap)dz=dz.map(v=>v*cap/big);
+    let lam=1,next=null;
+    for(let q=0;q<40;q++){const zn=[z[0]+lam*dz[0],z[1]+lam*dz[1]],r=res(zn);if(r&&r.n<cur.n){next=r;z=zn;break}lam/=2}
+    if(!next)break;
+    cur=next;
+  }
+  if(cur.n>1e-8)return{ok:false,why};
+  return done(cur);
 }
 
 function chol(M){
@@ -916,9 +1116,9 @@ function llFit(sorted,dist){
 // All four are tests for random samples. A Latin-hypercube sample is stratified
 // on purpose, so it fits its target far better than a random sample would and
 // p-values close to 1 are the expected outcome — the tests act as a sanity check.
-function runGOF(xi,dist,p1,p2){
+function runGOF(xi,dist,p1,p2,tr){
   const n=xi.length,sorted=[...xi].sort((a,b)=>a-b),al=.05,res=[];
-  const F0=sorted.map(v=>cdfv(v,dist,p1,p2));       // CDF under the specified distribution
+  const F0=sorted.map(v=>tCdf(v,dist,p1,p2,tr));    // CDF under the specified (possibly bounded) distribution
   const kolmD=F=>{let D=0;for(let i=0;i<n;i++)D=Math.max(D,(i+1)/n-F[i],F[i]-i/n);return D};
   const sq=Math.sqrt(n),stephens=sq+.12+.11/sq;     // Stephens' finite-n factor for √n·D
 
@@ -952,7 +1152,8 @@ function runGOF(xi,dist,p1,p2){
   //   Other families     : llP() — null distribution simulated in this work for
   //                        exactly the estimators in llFit().
   if(document.getElementById('gof-ll').checked){
-    if(n<5)res.push({name:'LL',na:'needs n ≥ 5'});
+    if(tr&&tr.bounded)res.push({name:'LL',na:'not calibrated for bounded variables'});
+    else if(n<5)res.push({name:'LL',na:'needs n ≥ 5'});
     else{
     // Step 1: estimate parameters from the sample
     const [ep1,ep2]=llFit(sorted,dist);
@@ -979,7 +1180,7 @@ function runLHS(n,vs,Rtgt,maxIter,T0,Tmin,alpha){
   const U=lhsdesign(n,d);
   // ── Single variable: skip Cholesky and SA entirely ────────────────────
   if(d===1){
-    const X=U.map(row=>[icdf(row[0],vs[0].dist,vs[0].p1,vs[0].p2)]);
+    const X=U.map(row=>[tIcdf(row[0],vs[0])]);
     return{X, Rfin:[[1]], cost:0};
   }
   // ── Step 1: normal scores carrying the target correlation (Cholesky) ──
@@ -998,7 +1199,7 @@ function runLHS(n,vs,Rtgt,maxIter,T0,Tmin,alpha){
   for(let j=0;j<d;j++){
     const us=U.map(r=>r[j]).sort((a,b)=>a-b);                                   // stratified values, ascending
     const ord=Array.from({length:n},(_,i)=>i).sort((a,b)=>Zc[a][j]-Zc[b][j]);   // rows in score-rank order
-    for(let r=0;r<n;r++)X[ord[r]][j]=icdf(us[r],vs[j].dist,vs[j].p1,vs[j].p2);
+    for(let r=0;r<n;r++)X[ord[r]][j]=tIcdf(us[r],vs[j]);
   }
 
   let{mu,sig}=colMeanStd(X);
@@ -1061,7 +1262,7 @@ function drawMarginals(X,nvars){
     const [mn,mx]=minMax(col),rng=(mx-mn)||Math.abs(mn)||1;
     const xlo=mn-.12*rng,xhi=mx+.12*rng;
     const xp=Array.from({length:401},(_,k)=>xlo+k*(xhi-xlo)/400);
-    const yp=xp.map(x=>pdfv(x,v.dist,v.p1,v.p2));
+    const yp=xp.map(x=>tPdf(x,v.dist,v.p1,v.p2,v.tr));
     const nb=Math.max(12,Math.min(40,Math.round(2*Math.cbrt(col.length)))),bw=(xhi-xlo)/nb;   // Rice rule, 12…40 bins
     const bins=Array(nb).fill(0);
     col.forEach(x=>{const b=Math.min(nb-1,Math.max(0,Math.floor((x-xlo)/bw)));bins[b]++});
@@ -1072,16 +1273,17 @@ function drawMarginals(X,nvars){
     const sm=col.reduce((a,b)=>a+b,0)/col.length;
     const ss=Math.sqrt(col.reduce((a,b)=>a+(b-sm)**2,0)/(col.length-1));
     const sc=ss/Math.abs(sm)*100;
-    const ts=thStats(v.dist,v.p1,v.p2);
+    const ts=truncStats(v.dist,v.p1,v.p2,v.tr);
     const tc=ts.sig/Math.abs(ts.mu)*100;
-    const gof=runGOF(col,v.dist,v.p1,v.p2);
+    const gof=runGOF(col,v.dist,v.p1,v.p2,v.tr);
+    const bl=v.tr?` · bounded ${boundStr(v.tr.L??NaN,v.tr.U??NaN)}`:'';
     const note=v.dist==='lognormal'?` <span class="lbl">[μ_ln=${v.p1.toFixed(3)} σ_ln=${v.p2.toFixed(3)}]</span>`:'';
     const g5=x=>fmtNum(x,5);
-    let infoH=`<div class="sinfo"><span class="lbl">Sample :  </span>mean=${g5(sm)}  std=${g5(ss)}  COV=${sc.toFixed(1)}%<br>`+
-      `<span class="lbl">Theoret.: </span>mean=${g5(ts.mu)}  std=${g5(ts.sig)}  COV=${tc.toFixed(1)}%${note}`;
-    const meta={title:`${v.name} — ${v.dist}`,lines:[
-      {c:'#8a97b0',t:`Sample : mean=${g5(sm)}  std=${g5(ss)}  COV=${sc.toFixed(1)}%`},
-      {c:'#8a97b0',t:`Theoret.: mean=${g5(ts.mu)}  std=${g5(ts.sig)}  COV=${tc.toFixed(1)}%`+(v.dist==='lognormal'?`  [μ_ln=${v.p1.toFixed(3)} σ_ln=${v.p2.toFixed(3)}]`:'')}]};
+    let infoH=`<div class="sinfo"><span class="lbl">Sample :  </span>mean=${g5(sm)}  std=${g5(ss)}  COV=${Number.isFinite(sc)?sc.toFixed(1)+'%':'—'}<br>`+
+      `<span class="lbl">Theoret.: </span>mean=${g5(ts.mu)}  std=${g5(ts.sig)}  COV=${Number.isFinite(tc)?tc.toFixed(1)+'%':'—'}${note}`;
+    const meta={title:`${v.name} — ${v.dist}${bl}`,lines:[
+      {c:'#8a97b0',t:`Sample : mean=${g5(sm)}  std=${g5(ss)}  COV=${Number.isFinite(sc)?sc.toFixed(1)+'%':'—'}`},
+      {c:'#8a97b0',t:`Theoret.: mean=${g5(ts.mu)}  std=${g5(ts.sig)}  COV=${Number.isFinite(tc)?tc.toFixed(1)+'%':'—'}`+(v.dist==='lognormal'?`  [μ_ln=${v.p1.toFixed(3)} σ_ln=${v.p2.toFixed(3)}]`:'')}]};
     gof.forEach(g=>{
       if(g.na){infoH+=`<br><span class="lbl">${g.name}: n/a (${g.na})</span>`;meta.lines.push({c:'#5a6680',t:`${g.name}: n/a (${g.na})`});return}
       const note=g.note?' '+g.note:'',txt=`${g.name}: p=${g.p.toFixed(3)}  ${g.pass?'PASS':'FAIL'} (α=0.05)${note}`;
@@ -1091,7 +1293,7 @@ function drawMarginals(X,nvars){
     infoH+='</div>';
     const card=document.createElement('div');
     card.className='card';
-    card.innerHTML=`<h3>${escHtml(v.name)} — ${v.dist}</h3><canvas id="mc${i}" height="160"></canvas>${infoH}`;
+    card.innerHTML=`<h3>${escHtml(v.name)} — ${v.dist}${bl}</h3><canvas id="mc${i}" height="160"></canvas>${infoH}`;
     mg.appendChild(card);
     if(typeof Chart!=='function'){      // chart library not loaded (e.g. offline): keep statistics, skip the plot
       const cv=document.getElementById(`mc${i}`),msg=document.createElement('div');
@@ -1185,8 +1387,11 @@ function drawConvLog(X, nvars){
     h+=`<div class="convrow">
       <div class="convname">${escHtml(e.name)} <span class="convdist">${e.dist}</span></div>
       <div class="convline"><span class="lbl">Input:</span> ${inputStr}</div>
+      ${e.tr?`<div class="convline"><span class="lbl">Bounds:</span> ${e.bstr} — option ${e.mode}: ${e.mode==='B'?'cut the full distribution':'mean/std kept for the bounded sample'}</div>`:''}
       <div class="convline"><span class="lbl">Native:</span> ${nativeStr}</div>
-      <div class="convline"><span class="lbl">Theory:</span> mean=${f(e.thMu)}, std=${f(e.thSig)}</div>
+      ${e.tr?`<div class="convline"><span class="lbl">Full:</span> mean=${f(e.fullMu)}, std=${f(e.fullSig)}  (before cutting)</div>
+      <div class="convline"><span class="lbl">Kept:</span> ${fmtNum(100*e.tr.mass,4)} % of the full distribution</div>`:''}
+      <div class="convline"><span class="lbl">${e.tr?'Bounded:':'Theory:'}</span> mean=${f(e.thMu)}, std=${f(e.thSig)}</div>
       <div class="convline"><span class="lbl">Sample:</span> mean=${f(sm)}, std=${f(ss)}</div>
       ${e.note?`<div class="convline" style="color:var(--warn)"><span class="lbl">Note:</span> ${escHtml(e.note)}</div>`:''}
     </div>`;
@@ -1200,19 +1405,26 @@ function drawConvLog(X, nvars){
 function renderVars(){
   const tb=document.getElementById('vtbody');
   tb.innerHTML='';
+  const B=boundMode!=='A';
+  document.getElementById('vtbl').classList.toggle('bounded',B);
+  // narrower inputs when the two bound columns are shown, so the table still fits the sidebar
+  const W=B?{name:44,dist:84,par:52,bnd:48}:{name:52,dist:96,par:62,bnd:48};
   vars.forEach((v,i)=>{
     const info=DINFO[v.dist];
     const tr=document.createElement('tr');
     tr.innerHTML=`
       <td style="color:var(--txt3);text-align:center">${i+1}</td>
-      <td><input type="text"   value="${escHtml(v.name)}" style="width:52px" oninput="vars[${i}].name=this.value;renderCorr()"></td>
+      <td><input type="text"   value="${escHtml(v.name)}" style="width:${W.name}px" oninput="vars[${i}].name=this.value;renderCorr()"></td>
       <td>
-        <select style="width:96px" onchange="vars[${i}].dist=this.value;activeRow=${i};renderVars()">
+        <select style="width:${W.dist}px" onchange="vars[${i}].dist=this.value;activeRow=${i};renderVars()">
           ${DISTS.map(d=>`<option value="${d}"${d===v.dist?' selected':''}>${d}</option>`).join('')}
         </select>
       </td>
-      <td><input type="number" step="any" value="${Number.isFinite(v.p1)?v.p1:''}" style="width:62px" title="${escHtml(info.p1)}" oninput="vars[${i}].p1=parseFloat(this.value)"></td>
-      <td><input type="number" step="any" value="${Number.isFinite(v.p2)&&!info.single?v.p2:''}" style="width:62px" title="${escHtml(info.p2)}" ${info.single?'disabled placeholder="auto"':''} oninput="vars[${i}].p2=parseFloat(this.value)"></td>
+      <td><input type="number" step="any" value="${Number.isFinite(v.p1)?v.p1:''}" style="width:${W.par}px" title="${escHtml(info.p1)}" oninput="vars[${i}].p1=parseFloat(this.value)"></td>
+      <td><input type="number" step="any" value="${Number.isFinite(v.p2)&&!info.single?v.p2:''}" style="width:${W.par}px" title="${escHtml(info.p2)}" ${info.single?'disabled placeholder="auto"':''} oninput="vars[${i}].p2=parseFloat(this.value)"></td>
+      ${['L','U'].map(k=>v.dist==='uniform'
+        ?`<td class="bcol"><input type="number" disabled placeholder="—" title="Min and Max already bound a uniform variable" style="width:${W.bnd}px"></td>`
+        :`<td class="bcol"><input type="number" step="any" value="${Number.isFinite(v[k])?v[k]:(v[k]='',v[k]=NaN,'')}" placeholder="${k==='L'?'−∞':'+∞'}" title="${k==='L'?'Lower':'Upper'} bound (blank = none)" style="width:${W.bnd}px" oninput="vars[${i}].${k}=this.validity.badInput?'bad':parseFloat(this.value)"></td>`).join('')}
       <td><button class="del" onclick="delVar(${i})">×</button></td>
     `;
     // The two parameter columns mean different things per distribution
@@ -1228,7 +1440,11 @@ function updateHint(i){
   const v=vars[i];if(!v)return;
   activeRow=i;
   const info=DINFO[v.dist];
-  document.getElementById('dhint').textContent=`Row ${i+1} (${v.dist}):  ${info.hint}`;
+  let bh='';
+  if(boundMode!=='A')bh=v.dist==='uniform'?'  ·  Bounds: not used (Min/Max already bound it)'
+    :boundMode==='B'?'  ·  Bounds: Lower/Upper cut the full distribution (blank = no limit)'
+    :'  ·  Bounds: Lower/Upper; mean/std are kept for the bounded sample (blank = no limit)';
+  document.getElementById('dhint').textContent=`Row ${i+1} (${v.dist}):  ${info.hint}${bh}`;
   // Headers must be right for every row at once: uniform rows hold min / max instead of mean / std.
   const nUni=vars.filter(x=>x.dist==='uniform').length,allUni=nUni===vars.length;
   document.getElementById('ph1').textContent=allUni?'Min (a)':nUni?'Mean | Min':'Mean';
@@ -1236,7 +1452,8 @@ function updateHint(i){
 }
 
 function addVar(){
-  const newDist='normal'; vars.push({name:`x${vars.length+1}`,dist:newDist,p1:1,p2:1});
+  let k=vars.length+1;while(vars.some(v=>v.name===`x${k}`))k++;      // never duplicate an existing name
+  const newDist='normal'; vars.push({name:`x${k}`,dist:newDist,p1:1,p2:1,L:NaN,U:NaN});
   // expand R
   const d=R.length;
   R=R.map(row=>[...row,0]);
@@ -1329,8 +1546,8 @@ function showTab(idx){
 // ═══════════════════════════════════════════════════════════════════
 function run(){
   if(!valCorr()){setStatus('Fix correlation matrix first.','err');return}
-  const nRaw=Number(document.getElementById('n-samples').value),n=Math.round(nRaw);
-  if(!Number.isFinite(nRaw)||n<2){setStatus('n must be a whole number ≥ 2.','err');return}
+  const nEl=document.getElementById('n-samples'),nRaw=Number(nEl.value),n=nRaw;
+  if(nEl.validity.badInput||nEl.value.trim()===''||!Number.isInteger(nRaw)||n<2){setStatus('n must be a whole number ≥ 2.','err');return}
   if(n>N_MAX){setStatus(`n must be ≤ ${N_MAX}.`,'err');return}
   // ── Validate mean/std inputs and convert to native parameters ────────
   // vars[i].p1, p2 hold MEAN and STD (or MIN/MAX for uniform).
@@ -1341,24 +1558,64 @@ function run(){
   for(let i=0;i<vars.length;i++){
     const v=vars[i];
     if(!v.name.trim()){setStatus(`Variable ${i+1} has no name.`,'err');return}
+    if(vars.findIndex(w=>w.name.trim()===v.name.trim())!==i){setStatus(`Variable names must be unique — "${v.name}" is used more than once.`,'err');return}
     const single=DINFO[v.dist].single;
     const lab=v.dist==='uniform'?['Min a','Max b']:['Mean','Std dev'];
     // an empty or non-numeric field must stop the run (it would otherwise spread NaN into the samples)
     if(!Number.isFinite(v.p1)){setStatus(`${lab[0]} for "${v.name}" is missing or not a number.`,'err');return}
     if(!single&&!Number.isFinite(v.p2)){setStatus(`${lab[1]} for "${v.name}" is missing or not a number.`,'err');return}
 
+    // numbers far outside any physical scale overflow the statistics — refuse them
+    const big=[v.p1,single?0:v.p2,...(boundMode!=='A'&&v.dist!=='uniform'?[v.L,v.U]:[])].filter(Number.isFinite).some(x=>Math.abs(x)>1e100);
+    if(big){setStatus(`"${v.name}": values beyond ±1e100 are not supported.`,'err');return}
     if(v.dist==='uniform'){
       if(v.p2<=v.p1){setStatus(`Max b must be > Min a for "${v.name}".`,'err');return}
+      if(v.p2-v.p1<1e-10*Math.max(Math.abs(v.p1),Math.abs(v.p2))||v.p2-v.p1<1e-100){setStatus(`"${v.name}": Max − Min is too small to be represented (the variable is effectively constant).`,'err');return}
     } else {
       // mean/std validation
       if(!['normal','gumbel'].includes(v.dist)&&v.p1<=0){setStatus(`Mean for "${v.name}" must be > 0.`,'err');return}
       if(!single&&v.p2<=0){setStatus(`Std dev for "${v.name}" must be > 0.`,'err');return}
+      if(!single&&(v.p2<1e-10*Math.abs(v.p1)||v.p2<1e-100)){setStatus(`"${v.name}": std dev is too small to be represented (below 1e-10 × |mean|; the variable is effectively constant).`,'err');return}
+      if(single&&v.p1<1e-100){setStatus(`"${v.name}": mean is too small to be represented.`,'err');return}
     }
 
+    // ── Bounds (options B and C; blank = that side open; never for uniform) ──
+    let L=NaN,U=NaN;
+    if(boundMode!=='A'&&v.dist!=='uniform'){
+      if(v.L==='bad'||v.U==='bad'){setStatus(`${v.L==='bad'?'Lower':'Upper'} bound for "${v.name}" is not a valid number (leave it empty for no bound).`,'err');return}
+      L=v.L;U=v.U;
+    }
+    const bounded=Number.isFinite(L)||Number.isFinite(U);
+    const fb=x=>Number.isFinite(x)?fmtNum(x,6):'';
+    const bstr=boundStr(L,U);
+    if(bounded&&Number.isFinite(L)&&Number.isFinite(U)&&L>=U){setStatus(`Lower bound must be smaller than the upper bound for "${v.name}".`,'err');return}
+
     // Convert to native parameters
-    const c=toNative(v.dist, v.p1, single?undefined:v.p2);
-    if(!c.ok){setStatus(`"${v.name}" (${v.dist}): ${c.msg}`,'err');return}
+    let c,tr,noEffect=false;
+    // bounds that remove nothing (e.g. L ≤ 0 for a positive variable) leave the variable unbounded
+    const cutsNothing=t=>t.a===0&&t.b===1&&t.qa===1&&t.qb===0;
+    if(bounded){const c0=toNative(v.dist,v.p1,single?undefined:v.p2);if(c0.ok&&cutsNothing(truncInfo(v.dist,c0.p1,c0.p2,L,U)))noEffect=true}
+    if(bounded&&!noEffect&&boundMode==='C'){
+      // option C: the bounded sample must have the requested mean (and std)
+      if((Number.isFinite(L)&&v.p1<=L)||(Number.isFinite(U)&&v.p1>=U)){setStatus(`"${v.name}": with option C the mean (${fb(v.p1)}) must lie within the bounds (${bstr}).`,'err');return}
+      const sol=solveParent(v.dist,v.p1,single?undefined:v.p2,L,U);
+      if(!sol.ok&&sol.why&&sol.why.limit){setStatus(`"${v.name}": option C would need a full ${v.dist} distribution outside the allowed range — closest attempt: ${sol.why.limit}. Change the mean/std or bounds, or use option B.`,'err');return}
+      if(!sol.ok){
+        const uni=Number.isFinite(L)&&Number.isFinite(U)?` (for comparison, a uniform spread over ${bstr} has std ${fmtNum((U-L)/Math.sqrt(12),4)})`:'';
+        setStatus(single
+          ?`"${v.name}": no ${v.dist} distribution cut to ${bstr} has mean ${fb(v.p1)} — move the mean further from the bounds, widen them, or use option B.`
+          :`"${v.name}": no ${v.dist} distribution cut to ${bstr} has mean ${fb(v.p1)} and std ${fb(v.p2)} — the std is too large for this range or the mean is too close to a bound${uni}. Widen the bounds, reduce the std, or use option B.`,'err');return}
+      c={ok:true,p1:sol.p1,p2:sol.p2,pm:sol.pm,ps:sol.ps};tr=sol.tr;
+    }else{
+      c=toNative(v.dist, v.p1, single?undefined:v.p2);
+      if(!c.ok){setStatus(`"${v.name}" (${v.dist}): ${c.msg}`,'err');return}
+      if(bounded&&!noEffect)tr=truncInfo(v.dist,c.p1,c.p2,L,U);
+    }
     if(!Number.isFinite(c.p1)||(!single&&!Number.isFinite(c.p2))){setStatus(`"${v.name}" (${v.dist}): these inputs cannot be converted to distribution parameters.`,'err');return}
+    if(tr&&boundMode==='B'&&!(tr.mass>=1e-3)){
+      setStatus(tr.mass>0
+        ?`"${v.name}": the bounds (${bstr}) keep only ${fmtNum(100*tr.mass,2)} % of the distribution — check the bounds (at least 0.1 % must remain).`
+        :`"${v.name}": the bounds (${bstr}) leave no values of this distribution (e.g. an upper bound ≤ 0 for a variable that is always positive).`,'err');return}
 
     // ── Native-parameter bounds (post-conversion safety) ────────────────
     if(v.dist==='frechet'&&c.p1<=2){setStatus(`"${v.name}": Fréchet requires α>2 (CV too high for finite variance).`,'err');return}
@@ -1367,31 +1624,35 @@ function run(){
     if(v.dist==='gamma'&&c.p1<0.1){setStatus(`"${v.name}": CV=${(v.p2/v.p1).toFixed(2)} too high for a practical Gamma (max CV≈3.16, shape α≥0.1).`,'err');return}
     if(v.dist==='lognormal'&&c.p2>5){setStatus(`"${v.name}": resulting σ_ln>5 (samples span too many orders of magnitude).`,'err');return}
 
-    nativeVars.push({name:v.name, dist:v.dist, p1:c.p1, p2:c.p2});
+    nativeVars.push({name:v.name, dist:v.dist, p1:c.p1, p2:c.p2, tr});
 
     // ── Notes (non-blocking): shown in the status bar and in the conversion log ──
     let note='';
-    if(v.dist==='exponential') note='single-parameter: std is forced equal to the mean (CV = 100 %)';
-    if(v.dist==='rayleigh')    note='single-parameter: std is fixed by the mean (CV = 52.3 %)';
+    if(v.dist==='exponential'&&!tr) note='single-parameter: std is forced equal to the mean (CV = 100 %)';
+    if(v.dist==='rayleigh'&&!tr)    note='single-parameter: std is fixed by the mean (CV = 52.3 %)';
+    if(tr&&single&&boundMode==='C') note='single-parameter: only the mean can be kept; the std follows from the mean and the bounds';
+    if(noEffect)                    note='the bounds lie outside the range of this distribution and have no effect';
     if(v.dist==='weibull'&&c.p1<1) note=`high CV → shape k=${c.p1.toFixed(2)} < 1: J-shaped density (mode at 0)`;
     if(v.dist==='gamma'&&c.p1<1)   note=`high CV → shape α=${c.p1.toFixed(2)} < 1: J-shaped density (mode at 0)`;
+    if(tr&&tr.mass<.5)note=(note?note+'; ':'')+`the bounds remove ${fmtNum(100*(1-tr.mass),3)} % of the full distribution`;
     if(note)softWarnings.push(`"${v.name}": ${note}`);
 
     // Build conversion log entry
-    const lbl=nativeLabels(v.dist), ts=thStats(v.dist,c.p1,c.p2);
+    const lbl=nativeLabels(v.dist), full=thStats(v.dist,c.p1,c.p2), ts=truncStats(v.dist,c.p1,c.p2,tr);
     convLog.push({name:v.name, dist:v.dist, inMean:v.p1, inStd:single?null:v.p2,
                   isUniform:v.dist==='uniform', l1:lbl[0], v1:c.p1, l2:lbl[1], v2:c.p2,
-                  thMu:ts.mu, thSig:ts.sig, note});
+                  thMu:ts.mu, thSig:ts.sig, note, tr, mode:tr?boundMode:'A', bstr,
+                  fullMu:full.mu, fullSig:full.sig});
   }
   window._convLog=convLog;   // stored for the conversion log panel
 
   // ── SA settings (only used when there are at least two variables) ────
-  const maxIter=Number(document.getElementById('sa-iter').value);
+  const itEl=document.getElementById('sa-iter'),maxIter=itEl.value.trim()===''||itEl.validity.badInput?NaN:Number(itEl.value);
   const T0=Number(document.getElementById('sa-t0').value);
   const Tmin=Number(document.getElementById('sa-tmin').value);
   const alpha=Number(document.getElementById('sa-alpha').value);
   if(vars.length>1){
-    if(!Number.isFinite(maxIter)||maxIter<0){setStatus('SA: max iterations must be a number ≥ 0.','err');return}
+    if(!Number.isInteger(maxIter)||maxIter<0){setStatus('SA: max iterations must be a whole number ≥ 0.','err');return}
     if(!(T0>0)){setStatus('SA: initial temperature T₀ must be > 0.','err');return}
     if(!(Tmin>0)||!(Tmin<T0)){setStatus('SA: T_min must be > 0 and smaller than T₀.','err');return}
     if(!(alpha>0&&alpha<1)){setStatus('SA: cooling factor α must lie strictly between 0 and 1 (e.g. 0.9999).','err');return}
@@ -1507,7 +1768,7 @@ function savePNG(){
   // ── Tab 1 & 2: canvas-based tabs ────────────────────────────────
   const panel=document.querySelector('.tabpanel.active');
   const canvases=panel.querySelectorAll('canvas');
-  if(!canvases.length){alert('Run the sampler first.');return}
+  if(!canvases.length){alert(idx===2&&resultX&&_scatterData&&_scatterData.names.length<2?'The scatter matrix needs at least two variables.':'Run the sampler first.');return}
   const cw=canvases[0].width, ch=canvases[0].height;
 
   if(idx===2){
@@ -1575,6 +1836,10 @@ function setStatus(msg,state){
 //  WIRE UP EVENTS (no inline onclick on critical buttons)
 // ═══════════════════════════════════════════════════════════════════
 document.getElementById('btn-add').addEventListener('click', addVar);
+document.querySelectorAll('input[name="bmode"]').forEach(r=>r.addEventListener('change',()=>{
+  if(!r.checked)return;
+  boundMode=r.value;renderVars();
+}));
 document.getElementById('btn-rem').addEventListener('click', ()=>{
   if(vars.length<=1){setStatus('Need at least 1 variable.','err');return}
   delVar(vars.length-1);
